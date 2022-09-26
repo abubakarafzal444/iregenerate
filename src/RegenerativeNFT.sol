@@ -24,12 +24,14 @@ error NotQualified();
 error InvalidSlot();
 error ExceedTVL();
 error NotOwner();
+error OnlyStake();
 
 address constant RE_NFT = 0x502818ec5767570F7fdEe5a568443dc792c4496b;
 address constant RE_STAKE = 0x10a92B12Da3DEE9a3916Dbaa8F0e141a75F07126;
 address constant FREE_MINT = 0x10a92B12Da3DEE9a3916Dbaa8F0e141a75F07126;
 address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 address constant MULTISIG = 0xAcB683ba69202c5ae6a3B9b9b191075295b1c41C;
+address constant RegenerativeStake = address(0);
 
 contract Regenerative is IERC3525 {
     using Strings for address;
@@ -110,6 +112,21 @@ contract Regenerative is IERC3525 {
         uint256 addedValue = rwaAmount_ *
             _allSlots[_allSlotsIndex[slot_]].rwaValue;
         _allSlots[_allSlotsIndex[slot_]].mintableValue += addedValue;
+    }
+
+    function createSlot(uint256 rwaAmount_, uint256 rwaValue_)
+        exernal
+        onlyOwner
+    {
+        uint256 slotId = slotCount() + 1;
+        SlotData memory slotData = SlotData({
+            slot: slotId,
+            slotTokens: new uint256[](0),
+            mintableValue: rwaAmount_ * rwaValue_,
+            rwaValue: rwaValue_,
+            rwaAmount: rwaAmount_
+        });
+        _addSlotToAllSlotsEnumeration(slotData);
     }
 
     function tokenInSlotByIndex(uint256 slot_, uint256 index_)
@@ -272,6 +289,20 @@ contract Regenerative is IERC3525 {
         return _allTokens[_allTokensIndex[tokenId_]].balance;
     }
 
+    function highYieldSecsOf(uint256 tokenId_)
+        public
+        view
+        virtual
+        override
+        returns (uint256)
+    {
+        require(
+            _exists(tokenId_),
+            "ERC3525: balance query for nonexistent token"
+        );
+        return _allTokens[_allTokensIndex[tokenId_]].highYieldSecs;
+    }
+
     // ERC721 Compatible
     function ownerOf(uint256 tokenId_)
         public
@@ -405,7 +436,9 @@ contract Regenerative is IERC3525 {
         return _approvedValues[tokenId_][operator_];
     }
 
-    function merge(uint256[] calldata tokenIds_) external {
+    function merge(uint256[] calldata tokenIds_, uint256 highYieldSecs_)
+        external
+    {
         uint256 length = tokenIds_.length;
         TokenData storage tokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
         if (msg.sender != tokenData.owner) revert NotOwner();
@@ -426,7 +459,8 @@ contract Regenerative is IERC3525 {
             }
             _burn(tokenIds_[i]);
         }
-        _allTokens[_allTokensIndex[tokenIds_[0]]].redemption = redemption;
+        tokenData.redemption = redemption;
+        tokenData.highYieldSecs = highYieldSecs_;
     }
 
     function transferFrom(
@@ -438,9 +472,10 @@ contract Regenerative is IERC3525 {
         uint256 newTokenId = _createDerivedTokenId(fromTokenId_);
         // to_ need to transfer ERC20 value_ to msg.sender
         // ERC 3525 would mint a new NFT with value_ to to_
-        if (IERC20(USDC).transferFrom(to_, msg.sender, value_)) {
-            _mint(to_, newTokenId, slotOf(fromTokenId_));
-            _transferValue(fromTokenId_, newTokenId, value_);
+        _mint(to_, newTokenId, slotOf(fromTokenId_));
+        _transferValue(fromTokenId_, newTokenId, value_);
+        if (to_ != RegenerativeStake) {
+            IERC20(USDC).transferFrom(to_, msg.sender, value_);
         }
         return newTokenId;
     }
@@ -925,6 +960,17 @@ contract Regenerative is IERC3525 {
             _checkOnERC721Received(from_, to_, tokenId_, data_),
             "ERC3525: transfer to non ERC721Receiver"
         );
+    }
+
+    function updateHighYieldSecsByTokenId(uint256 tokenId_, uint256 secs_)
+        external
+    {
+        if (msg.sender != RegenerativeStake) revert OnlyStake();
+        if (secs_ == 0) {
+            _allTokens[_allTokensIndex[tokenId_]].highYieldSecs = secs;
+        } else {
+            _allTokens[_allTokensIndex[tokenId_]].highYieldSecs += secs;
+        }
     }
 
     // ================= Token End ========================
