@@ -70,6 +70,8 @@ interface RegenerativeNFT {
         external;
 
     function highYieldSecsOf(uint256 tokenId_) external returns (uint256);
+
+    function burn(uint256 tokenId_) external;
 }
 
 error NotOwner();
@@ -420,6 +422,8 @@ contract RegenerativeStake is ERC3525Holder {
                 tokenId,
                 0
             );
+
+            RegenerativeNFT(REGENERATIVE_NFT).burn(tokenId);
         }
 
         IERC20(USDC).transfer(msg.sender, principal + highYield);
