@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.0;
 
-import "openzeppelin-contracts/StringsUpgradeable.sol";
+import "openzeppelin-contracts-upgradeable/utils/StringsUpgradeable.sol";
 
 library StringConvertor {
     using StringsUpgradeable for uint256;

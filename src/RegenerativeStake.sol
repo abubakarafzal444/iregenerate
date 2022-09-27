@@ -1,82 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "./IERC3525.sol";
+import "./ERC3525/IERC3525.sol";
+import "./IRegenerative.sol";
+import "./IReStaking.sol";
 import "openzeppelin-contracts/interfaces/IERC20.sol";
-import "./ERC3525Holder.sol";
-
-library StructLib {
-    struct NftBalance {
-        uint256 stakingAmount;
-        uint256 burnableAmount;
-    }
-
-    struct StakingInfo {
-        uint256 stakeNFTamount;
-        uint256 leftToUnstakeNFTamount;
-        uint256 staketime;
-        uint256 unstaketime;
-        bool isUnstake;
-    }
-}
-
-interface ReStaking {
-    function nftBalance(address staker)
-        external
-        view
-        returns (StructLib.NftBalance memory);
-
-    function stakingInfo(address staker, uint256 index)
-        external
-        view
-        returns (StructLib.StakingInfo memory);
-}
-
-interface RegenerativeNFT {
-    function isApprovedForAll(address owner_, address operator_)
-        external
-        view
-        returns (bool);
-
-    function safeTransferFrom(
-        address from_,
-        address to_,
-        uint256 tokenId_,
-        bytes memory data_
-    ) external;
-
-    function safeTransferFrom(
-        address from_,
-        address to_,
-        uint256 tokenId_
-    ) external;
-
-    function transferFrom(
-        address from_,
-        address to_,
-        uint256 value_
-    ) external returns (uint256);
-
-    function balanceOf(address owner_) external view returns (uint256 balance);
-
-    function balanceOf(uint256 tokenId_) external view returns (uint256);
-
-    function tokenOfOwnerByIndex(address owner_, uint256 index_)
-        external
-        view
-        returns (uint256);
-
-    function updateHighYieldSecsByTokenId(uint256 tokenId_, uint256 secs_)
-        external;
-
-    function highYieldSecsOf(uint256 tokenId_) external returns (uint256);
-
-    function burn(uint256 tokenId_) external;
-}
-
-error NotOwner();
-error NotApproved();
-error NotClamiable();
+import "./ERC3525/ERC3525Holder.sol";
+import "./Constants.sol";
 
 contract RegenerativeStake is ERC3525Holder {
     struct Duration {
@@ -90,9 +20,11 @@ contract RegenerativeStake is ERC3525Holder {
         uint256 claimtime;
     }
 
-    address constant RE_STAKING = 0x7dabFb9b6DE663A83Aa3e6639813855A9Dd853c1;
-    address constant REGENERATIVE_NFT = address(0);
-    address constant USDC = address(0);
+    IERC3525 public erc3525;
+
+    function initialize() external {
+        erc3525 = IERC3525(Constants.REGENERATIVE_NFT);
+    }
 
     // NFT contract init time + 3 months
     uint256 constant LOCK_TIME = 1235468;
@@ -126,7 +58,7 @@ contract RegenerativeStake is ERC3525Holder {
         view
         returns (uint256 staked)
     {
-        return ReStaking(RE_STAKING).nftBalance(staker).stakingAmount;
+        return IReStaking(Constants.RE_STAKING).nftBalance(staker).stakingAmount;
     }
 
     // test func
@@ -141,7 +73,7 @@ contract RegenerativeStake is ERC3525Holder {
             bool isUnstake
         )
     {
-        StructLib.StakingInfo memory stakingInfo = ReStaking(RE_STAKING)
+        Constants.StakingInfo memory stakingInfo = IReStaking(Constants.RE_STAKING)
             .stakingInfo(staker, index);
         return (
             stakingInfo.stakeNFTamount,
@@ -173,8 +105,8 @@ contract RegenerativeStake is ERC3525Holder {
         stake functions
      */
     function stake(uint256 tokenId_, uint256 value_) public {
-        if (msg.sender != IERC3525(REGENERATIVE_NFT).ownerOf(tokenId_))
-            revert NotOwner();
+        if (msg.sender != erc3525.ownerOf(tokenId_))
+            revert Constants.NotOwner();
 
         uint256 currtime = block.timestamp;
         uint256 tokenId = tokenId_;
@@ -191,15 +123,15 @@ contract RegenerativeStake is ERC3525Holder {
 
         if (value_ == 0) {
             // stake tokenId_ into the contract
-            RegenerativeNFT(REGENERATIVE_NFT).safeTransferFrom(
+            erc3525.safeTransferFrom(
                 msg.sender,
                 address(this),
                 tokenId_
             );
-            value = RegenerativeNFT(REGENERATIVE_NFT).balanceOf(tokenId_);
+            value = erc3525.balanceOf(tokenId_);
         } else {
             // split tokenId_ to newTokenId then stake into the contract
-            tokenId = RegenerativeNFT(REGENERATIVE_NFT).transferFrom(
+            tokenId = erc3525.transferFrom(
                 msg.sender,
                 address(this),
                 value_
@@ -218,14 +150,14 @@ contract RegenerativeStake is ERC3525Holder {
      */
 
     function claim() external {
-        if (block.timestamp < LOCK_TIME) revert NotClamiable();
+        if (block.timestamp < LOCK_TIME) revert Constants.NotClamiable();
         uint256 currtime = block.timestamp;
         // claim all yields from staking NFTs whose owner is msg.sender
         uint256[] memory stakingIds = _stakingIds[msg.sender];
         uint256 balance = _calculateClaimableYield(stakingIds, currtime);
         _updateClaimtime(stakingIds, currtime);
 
-        IERC20(USDC).transfer(msg.sender, balance);
+        IERC20(Constants.USDC).transfer(msg.sender, balance);
         emit Claim(msg.sender, balance);
     }
 
@@ -257,7 +189,7 @@ contract RegenerativeStake is ERC3525Holder {
             uint256 tokenId = stakingIds_[i];
             balance +=
                 ((currtime_ - _stakingInfos[tokenId].claimtime) *
-                    RegenerativeNFT(REGENERATIVE_NFT).balanceOf(tokenId) *
+                    erc3525.balanceOf(tokenId) *
                     15) /
                 31_536_000 /
                 100;
@@ -280,12 +212,12 @@ contract RegenerativeStake is ERC3525Holder {
         _updateClaimtime(tokenIds_, currtime);
 
         for (uint256 i = 0; i < length; i++) {
-            RegenerativeNFT(REGENERATIVE_NFT).safeTransferFrom(
+            erc3525.safeTransferFrom(
                 address(this),
                 msg.sender,
                 tokenIds_[i]
             );
-            RegenerativeNFT(REGENERATIVE_NFT).updateHighYieldSecsByTokenId(
+            IRegenerative(Constants.REGENERATIVE_NFT).updateHighYieldSecsByTokenId(
                 tokenIds_[i],
                 _calculateHighYieldSecs(tokenIds_[i])
             );
@@ -293,7 +225,7 @@ contract RegenerativeStake is ERC3525Holder {
             emit Unstake(msg.sender, tokenIds_[i]);
         }
 
-        IERC20(USDC).transfer(msg.sender, balance);
+        IERC20(Constants.USDC).transfer(msg.sender, balance);
         emit Claim(msg.sender, balance);
     }
 
@@ -361,8 +293,8 @@ contract RegenerativeStake is ERC3525Holder {
         uint256 start = _reStakingIndex[staker];
         Duration memory newDuration;
         for (uint256 i = start; i < 2**256 - 1; i++) {
-            try ReStaking(RE_STAKING).stakingInfo(staker, i) returns (
-                StructLib.StakingInfo memory stakingInfo
+            try IReStaking(Constants.RE_STAKING).stakingInfo(staker, i) returns (
+                Constants.StakingInfo memory stakingInfo
             ) {
                 if (stakingInfo.isUnstake) {
                     newDuration = Duration({
@@ -394,6 +326,7 @@ contract RegenerativeStake is ERC3525Holder {
                     _reStakingDurations[staker].push(newDuration);
                 }
             } catch (bytes memory reason) {
+                if (reason.length != 0)
                 break;
             }
         }
@@ -410,23 +343,23 @@ contract RegenerativeStake is ERC3525Holder {
         for (uint256 i = 0; i < length; i++) {
             uint256 tokenIndex = _tokenIdsIndex[tokenIds_[i]];
             uint256 tokenId = _stakingIds[msg.sender][tokenIndex];
-            principal += RegenerativeNFT(REGENERATIVE_NFT).balanceOf(tokenId);
+            principal += erc3525.balanceOf(tokenId);
             _removeTokenIdFromStakingIds(tokenId);
 
             highYield += _calculateHighYield(
                 tokenId,
-                RegenerativeNFT(REGENERATIVE_NFT).highYieldSecsOf(tokenId)
+                IRegenerative(Constants.REGENERATIVE_NFT).highYieldSecsOf(tokenId)
             );
 
-            RegenerativeNFT(REGENERATIVE_NFT).updateHighYieldSecsByTokenId(
+            IRegenerative(Constants.REGENERATIVE_NFT).updateHighYieldSecsByTokenId(
                 tokenId,
                 0
             );
 
-            RegenerativeNFT(REGENERATIVE_NFT).burn(tokenId);
+            IRegenerative(Constants.REGENERATIVE_NFT).burn(tokenId);
         }
 
-        IERC20(USDC).transfer(msg.sender, principal + highYield);
+        IERC20(Constants.USDC).transfer(msg.sender, principal + highYield);
         emit Redeem(msg.sender, principal);
         if (highYield > 0) {
             emit Claim(msg.sender, highYield);
@@ -447,7 +380,7 @@ contract RegenerativeStake is ERC3525Holder {
         return
             (secs_ *
                 (HIGH_APR - BASE_APR) *
-                RegenerativeNFT(REGENERATIVE_NFT).balanceOf(tokenId_)) /
+                erc3525.balanceOf(tokenId_)) /
             31_536_000 /
             100;
     }

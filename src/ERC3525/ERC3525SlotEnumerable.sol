@@ -1,21 +1,17 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.0;
 
 import "./ERC3525Upgradeable.sol";
-import "./IERC3525SlotEnumerable.sol";
+import "./extensions/IERC3525SlotEnumerable.sol";
 
-abstract contract ERC3525SlotEnumerableUpgradeable is
-    ERC3525Upgradeable,
-    IERC3525SlotEnumerable
-{
-    // ============== Slot Start ======================
+contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnumerable {
     struct SlotData {
         uint256 slot;
         uint256[] slotTokens;
         uint256 mintableValue;
         uint256 rwaValue;
         uint256 rwaAmount;
+        address erc20;
     }
     // slot => tokenId => index
     mapping(uint256 => mapping(uint256 => uint256)) private _slotTokensIndex;
@@ -171,7 +167,7 @@ abstract contract ERC3525SlotEnumerableUpgradeable is
         delete _slotTokensIndex[slot_][tokenId_];
         slotData.slotTokens.pop();
     }
-    // ================== Slot End ==========================
+
     /**
      * @dev This empty reserved space is put in place to allow future versions to add new
      * variables without shifting down storage in the inheritance chain.

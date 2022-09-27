@@ -1,15 +1,29 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.0;
 
-import "./utils/Strings.sol";
+import "../Constants.sol";
 import "./utils/StringConvertor.sol";
-import "openzeppelin-contracts/utils/Address.sol";
+import "./extensions/IERC3525Metadata.sol";
+import "./IERC3525Receiver.sol";
+import "./periphery/interface/IERC3525MetadataDescriptor.sol";
+import "openzeppelin-contracts/interfaces/IERC20.sol";
 import "openzeppelin-contracts/interfaces/IERC721Enumerable.sol";
+import "openzeppelin-contracts/interfaces/IERC721Receiver.sol";
+import "openzeppelin-contracts/utils/Strings.sol";
+import "openzeppelin-contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import "openzeppelin-contracts-upgradeable/utils/ContextUpgradeable.sol";
+import "openzeppelin-contracts-upgradeable/utils/ContextUpgradeable.sol";
+import "openzeppelin-contracts-upgradeable/utils/AddressUpgradeable.sol";
 
-abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
+abstract contract ERC3525Upgradeable is
+    IERC721Enumerable,
+    IERC3525Metadata,
+    ERC165Upgradeable,
+    ContextUpgradeable
+{
     using Strings for address;
+    using AddressUpgradeable for address;
     using StringConvertor for uint256;
-    using Address for address;
 
     event SetMetadataDescriptor(address indexed metadataDescriptor);
 
@@ -29,8 +43,6 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
         mapping(uint256 => uint256) ownedTokensIndex;
         mapping(address => bool) approvals;
     }
-
-    address public RegenerativeStake = address(0);
 
     string private _name;
     string private _symbol;
@@ -167,7 +179,7 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
                     abi.encodePacked(
                         baseURI,
                         "contract/",
-                        Strings.toHexString(address(this))
+                        address(this).toHexString()
                     )
                 )
                 : "";
@@ -239,16 +251,13 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
         uint256 fromTokenId_,
         address to_,
         uint256 value_
-    ) public virtual override returns (uint256) {
+    ) public payable virtual override returns (uint256) {
         _spendAllowance(_msgSender(), fromTokenId_, value_);
+
         uint256 newTokenId = _createDerivedTokenId(fromTokenId_);
-        // to_ need to transfer ERC20 value_ to msg.sender
-        // ERC 3525 would mint a new NFT with value_ to to_
-        _mint(to_, newTokenId, slotOf(fromTokenId_));
+        _mint(to_, newTokenId, ERC3525Upgradeable.slotOf(fromTokenId_));
         _transferValue(fromTokenId_, newTokenId, value_);
-        if (to_ != RegenerativeStake) {
-            IERC20(USDC).transferFrom(to_, msg.sender, value_);
-        }
+
         return newTokenId;
     }
 
@@ -259,14 +268,6 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
     ) public payable virtual override {
         _spendAllowance(_msgSender(), fromTokenId_, value_);
 
-        address from_ = _allTokens[_allTokensIndex[fromTokenId_]].owner;
-        address to_ = _allTokens[_allTokensIndex[toTokenId_]].owner;
-
-        if (fromTokenData.owner != toTokenData.owner) {
-            // to_ needs to transfer ERC20 value_ to from_
-            // from_ will transfer value_ from fromTokenId_ to toTokenId_
-            IERC20(USDC).transferFrom(to_, from_, value_);
-        }
         _transferValue(fromTokenId_, toTokenId_, value_);
     }
 
@@ -485,7 +486,7 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
             approved: address(0),
             valueApprovals: new address[](0),
             balance: 0,
-            redemption: block.timestamp,
+            redemptiontime: block.timestamp,
             highYieldSecs: 0
         });
 
@@ -504,15 +505,7 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
         uint256 slot = tokenData.slot;
         uint256 value = tokenData.balance;
 
-        _beforeValueTransfer(
-            owner,
-            address(0),
-            tokenId_,
-            0,
-            slot,
-            address(0),
-            value
-        );
+        _beforeValueTransfer(owner, address(0), tokenId_, 0, slot, value);
 
         _clearApprovedValues(tokenId_);
         _removeTokenFromAllTokensEnumeration(tokenId_);
@@ -697,7 +690,6 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
             tokenId_,
             tokenId_,
             slotOf(tokenId_),
-            address(0),
             balanceOf(tokenId_)
         );
 
@@ -731,6 +723,7 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
             "ERC3525: transfer to non ERC721Receiver"
         );
     }
+
     // ================= Token End ========================
 
     function _checkOnERC3525Received(
@@ -831,6 +824,7 @@ abstract contract ERC3525Upgradeable is IERC721Enumerable, IERC3525Metadata {
         uint256 slot_,
         uint256 value_
     ) internal virtual {}
+
     /* solhint-enable */
 
     function _setMetadataDescriptor(address metadataDescriptor_)

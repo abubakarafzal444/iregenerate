@@ -15,6 +15,19 @@ library Constants {
         BOUNDING
     }
 
+    struct NftBalance {
+        uint256 stakingAmount;
+        uint256 burnableAmount;
+    }
+
+    struct StakingInfo {
+        uint256 stakeNFTamount;
+        uint256 leftToUnstakeNFTamount;
+        uint256 staketime;
+        uint256 unstaketime;
+        bool isUnstake;
+    }
+
     uint32 internal constant FULL_PERCENTAGE = 10000;
     address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -26,4 +39,15 @@ library Constants {
         0x10a92B12Da3DEE9a3916Dbaa8F0e141a75F07126;
     address internal constant MULTISIG =
         0xAcB683ba69202c5ae6a3B9b9b191075295b1c41C;
+    address internal constant REGENERATIVE_NFT = address(0);
+
+    error NotQualified();
+    error InvalidSlot();
+    error ExceedTVL();
+    error NotOwner();
+    error OnlyStake();
+    error NotApproved();
+    error NotClamiable();
+    error InsufficientBalance();
+    error ExceedUnits();
 }
