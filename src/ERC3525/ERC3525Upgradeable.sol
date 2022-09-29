@@ -6,7 +6,6 @@ import "./utils/StringConvertor.sol";
 import "./extensions/IERC3525Metadata.sol";
 import "./IERC3525Receiver.sol";
 import "./periphery/interface/IERC3525MetadataDescriptor.sol";
-import "openzeppelin-contracts/interfaces/IERC20.sol";
 import "openzeppelin-contracts/interfaces/IERC721Enumerable.sol";
 import "openzeppelin-contracts/interfaces/IERC721Receiver.sol";
 import "openzeppelin-contracts/utils/Strings.sol";
@@ -34,7 +33,7 @@ abstract contract ERC3525Upgradeable is
         address approved;
         address[] valueApprovals;
         uint256 balance;
-        uint256 redemptiontime;
+        uint256 maturity;
         uint256 highYieldSecs;
     }
 
@@ -486,7 +485,7 @@ abstract contract ERC3525Upgradeable is
             approved: address(0),
             valueApprovals: new address[](0),
             balance: 0,
-            redemptiontime: block.timestamp,
+            maturity: block.timestamp,
             highYieldSecs: 0
         });
 
@@ -500,7 +499,7 @@ abstract contract ERC3525Upgradeable is
     function _burn(uint256 tokenId_) internal virtual {
         require(_exists(tokenId_), "ERC3525: token does not exist");
 
-        TokenData storage tokenData = _allTokens[_allTokensIndex[tokenId_]];
+        TokenData memory tokenData = _allTokens[_allTokensIndex[tokenId_]];
         address owner = tokenData.owner;
         uint256 slot = tokenData.slot;
         uint256 value = tokenData.balance;
@@ -624,25 +623,14 @@ abstract contract ERC3525Upgradeable is
         uint256 toTokenId_,
         uint256 value_
     ) internal virtual {
-        require(
-            _exists(fromTokenId_),
-            "ERC35255: transfer from nonexistent token"
-        );
+        require(_exists(fromTokenId_), "ERC35255: transfer from nonexistent token");
         require(_exists(toTokenId_), "ERC35255: transfer to nonexistent token");
 
-        TokenData storage fromTokenData = _allTokens[
-            _allTokensIndex[fromTokenId_]
-        ];
+        TokenData storage fromTokenData = _allTokens[_allTokensIndex[fromTokenId_]];
         TokenData storage toTokenData = _allTokens[_allTokensIndex[toTokenId_]];
 
-        require(
-            fromTokenData.balance >= value_,
-            "ERC3525: transfer amount exceeds balance"
-        );
-        require(
-            fromTokenData.slot == toTokenData.slot,
-            "ERC3535: transfer to token with different slot"
-        );
+        require(fromTokenData.balance >= value_, "ERC3525: transfer amount exceeds balance");
+        require(fromTokenData.slot == toTokenData.slot, "ERC3535: transfer to token with different slot");
 
         _beforeValueTransfer(
             fromTokenData.owner,

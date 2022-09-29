@@ -9,6 +9,11 @@ library Constants {
         STAGED
     }
 
+    enum YieldType {
+        BONUS_APR,
+        BASE_APR
+    }
+
     enum VoucherType {
         STANDARD_VESTING,
         FLEXIBLE_DATE_VESTING,
@@ -28,7 +33,11 @@ library Constants {
         bool isUnstake;
     }
 
-    uint32 internal constant FULL_PERCENTAGE = 10000;
+    uint256 internal constant BASE_APR = 15;
+    uint256 internal constant HIGH_APR = 25;
+    uint32 internal constant PERCENTAGE = 100;
+    uint256 internal constant YEAR_IN_SECS = 31_536_000;
+    uint256 internal constant LOCK_TIME = 1235468;
     address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address internal constant RE_NFT =
@@ -45,6 +54,7 @@ library Constants {
     error InvalidSlot();
     error ExceedTVL();
     error NotOwner();
+    error NotStaker();
     error OnlyStake();
     error NotApproved();
     error NotClamiable();

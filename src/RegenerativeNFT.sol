@@ -5,20 +5,29 @@ import "./ERC3525/ERC3525SlotEnumerable.sol";
 import "./IRegenerative.sol";
 import "./Constants.sol";
 import "openzeppelin-contracts/access/Ownable.sol";
+import "openzeppelin-contracts/interfaces/IERC20.sol";
+import "openzeppelin-contracts/proxy/utils/UUPSUpgradeable.sol";
+import "openzeppelin-contracts/proxy/utils/Initializable.sol";
 
-contract RegenerativeNFT is ERC3525SlotEnumerable, IRegenerative, Ownable {
-    address public RegenerativeStake;
+contract RegenerativeNFT is
+    Ownable,
+    UUPSUpgradeable,
+    Initializable,
+    ERC3525SlotEnumerable,
+    IRegenerative
+{
+    address public RegenerativePool;
 
     function initialize(
         string memory name_,
         string memory symbol_,
         uint8 decimals_
-    ) external {
+    ) external initializable {
         ERC3525Upgradeable.__ERC3525_init(name_, symbol_, decimals_);
     }
 
-    function setRegenerativeStake(address addr_) external onlyOwner {
-        RegenerativeStake = addr_;
+    function setRegenerativePool(address addr_) external onlyOwner {
+        RegenerativePool = addr_;
     }
 
     function balanceInSlot(uint256 slot_) public view returns (uint256) {
@@ -59,17 +68,21 @@ contract RegenerativeNFT is ERC3525SlotEnumerable, IRegenerative, Ownable {
         _allSlots[_allSlotsIndex[slot_]].mintableValue -= removedValue;
     }
 
-    function createSlot(uint256 rwaAmount_, uint256 rwaValue_)
-        external
-        onlyOwner
-    {
+    function createSlot(
+        uint256 rwaAmount_,
+        uint256 rwaValue_,
+        uint256 minimumValue_,
+        address currency_
+    ) external onlyOwner {
         uint256 slotId = slotCount() + 1;
         SlotData memory slotData = SlotData({
             slot: slotId,
             slotTokens: new uint256[](0),
+            minimumValue: minimumValue,
             mintableValue: rwaAmount_ * rwaValue_,
             rwaValue: rwaValue_,
-            rwaAmount: rwaAmount_
+            rwaAmount: rwaAmount_,
+            currency: currency_
         });
         _addSlotToAllSlotsEnumeration(slotData);
     }
@@ -82,66 +95,77 @@ contract RegenerativeNFT is ERC3525SlotEnumerable, IRegenerative, Ownable {
         return _allTokens[_allTokensIndex[tokenId_]].highYieldSecs;
     }
 
-    function mint(uint256 slot_, uint256 value_) external {
-        uint256 reHolding = OwnerChecker(RE_NFT).balanceOf(msg.sender);
-        uint256 reStaking = OwnerChecker(RE_STAKE)
-            .nftBalance(msg.sender)
-            .stakingAmount;
-        uint256 fmHolding = OwnerChecker(FREE_MINT).balanceOf(msg.sender);
-        if (reHolding == 0 && reStaking == 0 && fmHolding == 0)
-            revert NotQualified();
+    function mint(
+        address currency_,
+        uint256 slot_,
+        uint256 value_
+    ) external {
+        // uint256 reHolding = OwnerChecker(Constants.RE_NFT).balanceOf(msg.sender);
+        // uint256 reStaking = OwnerChecker(Constants.RE_STAKE)
+        //     .nftBalance(msg.sender)
+        //     .stakingAmount;
+        // uint256 fmHolding = OwnerChecker(Constants.FREE_MINT).balanceOf(msg.sender);
+        // if (reHolding == 0 && reStaking == 0 && fmHolding == 0)
+        //     revert Constants.NotQualified();
+
         if (!_slotExists(slot_)) revert Constants.InvalidSlot();
         if (balanceInSlot(slot_) < value_) revert Constants.ExceedTVL();
-        if (IERC20(USDC).transferFrom(msg.sender, MULTISIG, value_)) {
-            _mintValue(msg.sender, slot_, value_);
+
+        SlotData memory slotData = _allSlots[_allSlotsIndex[slot_]];
+        if (value_ < slotData.minimumValue)
+            revert Constants.InsufficientBalance();
+
+        if (IERC20(Constants.USDC).transferFrom(msg.sender, MULTISIG, value_)) {
+            _mintValue(msg.sender, slot_, totalValue);
         }
     }
 
-    function merge(uint256[] calldata tokenIds_, uint256 highYieldSecs_)
-        external
-    {
+    function merge(uint256[] calldata tokenIds_) external {
         uint256 length = tokenIds_.length;
-        TokenData storage tokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
-        if (msg.sender != tokenData.owner) revert Constants.NotOwner();
-        uint256 redemption = tokenData.redemption;
+        uint256 claimableYield = 0;
+        uint256 highYieldSecs = 0;
+        TokenData storage targetTokenData = _allTokens[
+            _allTokensIndex[tokenIds_[0]]
+        ];
+        if (msg.sender != targetTokenData.owner) revert Constants.NotOwner();
+        uint256 maturity = targetTokenData.maturity;
         for (uint256 i = 1; i < length; i++) {
-            if (msg.sender != _allTokens[_allTokensIndex[tokenIds_[i]]].owner) {
+            if (msg.sender != ownerOf(tokenIds_[i]))
                 revert Constants.NotOwner();
-            }
-            _transferValue(
-                tokenIds_[0],
-                tokenIds_[i],
-                _allTokens[_allTokensIndex[tokenIds_[i]]].balance
-            );
-            uint256 burnRedemption = _allTokens[_allTokensIndex[tokenIds_[i]]]
-                .redemption;
-            if (redemption < burnRedemption) {
-                redemption = burnRedemption;
+            TokenData memory sourceTokenData = _allTokens[
+                _allTokensIndex[tokenIds_[i]]
+            ];
+            _transferValue(tokenIds_[i], tokenIds_[0], sourceTokenData.balance);
+            claimableYield += sourceTokenData.claimableYield;
+            highYieldSecs += sourceTokenData.highYieldSecs;
+            if (maturity < sourceTokenData.maturity) {
+                maturity = sourceTokenData.maturity;
             }
             _burn(tokenIds_[i]);
         }
-        tokenData.redemption = redemption;
-        tokenData.highYieldSecs = highYieldSecs_;
+        targetTokenData.maturity = maturity;
+        targetTokenData.claimableYield += claimableYield;
+        targetTokenData.highYieldSecs += highYieldSecs;
     }
 
-    modifier onlyStake() {
-        if (msg.sender != RegenerativeStake) revert Constants.OnlyStake();
+    modifier onlyPool() {
+        if (msg.sender != RegenerativePool) revert Constants.OnlyStake();
         _;
     }
 
-    function burn(uint256 tokenId_) external onlyStake {
+    function burn(uint256 tokenId_) external onlyPool {
         _burn(tokenId_);
     }
 
-    function updateHighYieldSecsByTokenId(uint256 tokenId_, uint256 secs_)
-        external
-        onlyStake
-    {
-        if (secs_ == 0) {
-            _allTokens[_allTokensIndex[tokenId_]].highYieldSecs = secs;
-        } else {
-            _allTokens[_allTokensIndex[tokenId_]].highYieldSecs += secs;
-        }
+    function updateStakeDataByTokenId(
+        uint256 tokenId_,
+        uint256 secs_
+    ) external onlyPool {
+        _allTokens[_allTokensIndex[tokenId_]].highYieldSecs += secs;
+    }
+
+    function removeStakeDataByTokenId(uint256 tokenId_) external onlyPool {
+        delete _allTokens[_allTokensIndex[tokenId_]].highYieldSecs;
     }
 
     function transferFrom(
@@ -151,13 +175,8 @@ contract RegenerativeNFT is ERC3525SlotEnumerable, IRegenerative, Ownable {
     ) public payable virtual override returns (uint256) {
         _spendAllowance(_msgSender(), fromTokenId_, value_);
         uint256 newTokenId = _createDerivedTokenId(fromTokenId_);
-        // to_ need to transfer ERC20 value_ to msg.sender
-        // ERC 3525 would mint a new NFT with value_ to to_
         _mint(to_, newTokenId, slotOf(fromTokenId_));
         _transferValue(fromTokenId_, newTokenId, value_);
-        if (to_ != RegenerativeStake) {
-            IERC20(Constants.USDC).transferFrom(to_, msg.sender, value_);
-        }
         return newTokenId;
     }
 
@@ -167,20 +186,19 @@ contract RegenerativeNFT is ERC3525SlotEnumerable, IRegenerative, Ownable {
         uint256 value_
     ) public payable virtual override {
         _spendAllowance(_msgSender(), fromTokenId_, value_);
-
         address from_ = _allTokens[_allTokensIndex[fromTokenId_]].owner;
         address to_ = _allTokens[_allTokensIndex[toTokenId_]].owner;
-
-        TokenData memory fromTokenData = _allTokens[
-            _allTokensIndex[fromTokenId_]
-        ];
-        TokenData memory toTokenData = _allTokens[_allTokensIndex[toTokenId_]];
-
-        if (fromTokenData.owner != toTokenData.owner) {
-            // to_ needs to transfer ERC20 value_ to from_
-            // from_ will transfer value_ from fromTokenId_ to toTokenId_
-            IERC20(Constants.USDC).transferFrom(to_, from_, value_);
-        }
         _transferValue(fromTokenId_, toTokenId_, value_);
     }
+
+    function getSlotSnapShotByTokenId(uint256 tokenId_) external view returns(SlotData memory) {
+
+    }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        virtual
+        override
+        onlyOwner
+    {}
 }

@@ -8,10 +8,11 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
     struct SlotData {
         uint256 slot;
         uint256[] slotTokens;
+        uint256 minimumValue;
         uint256 mintableValue;
         uint256 rwaValue;
         uint256 rwaAmount;
-        address erc20;
+        address currency;
     }
     // slot => tokenId => index
     mapping(uint256 => mapping(uint256 => uint256)) private _slotTokensIndex;
@@ -83,28 +84,6 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
             slotData.slotTokens[_slotTokensIndex[slot_][tokenId_]] == tokenId_;
     }
 
-    function _beforeValueTransfer(
-        address from_,
-        address to_,
-        uint256 fromTokenId_,
-        uint256 toTokenId_,
-        uint256 slot_,
-        uint256 value_
-    ) internal virtual override {
-        if (from_ == address(0) && fromTokenId_ == 0 && !_slotExists(slot_)) {
-            SlotData memory slotData = SlotData({
-                slot: slot_,
-                slotTokens: new uint256[](0)
-            });
-            _addSlotToAllSlotsEnumeration(slotData);
-        }
-
-        //Shh - currently unused
-        to_;
-        toTokenId_;
-        value_;
-    }
-
     function _afterValueTransfer(
         address from_,
         address to_,
@@ -119,24 +98,15 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
             !_tokenExistsInSlot(slot_, toTokenId_)
         ) {
             _addTokenToSlotEnumeration(slot_, toTokenId_);
+            _allSlots[_allSlotsIndex[slot_]].mintableValue -= value_;
         } else if (
             to_ == address(0) &&
             toTokenId_ == 0 &&
             _tokenExistsInSlot(slot_, fromTokenId_)
         ) {
             _removeTokenFromSlotEnumeration(slot_, fromTokenId_);
-        }
-
-        if (
-            from_ == address(0) &&
-            to_ != address(0) &&
-            fromTokenId_ == 0 &&
-            toTokenId_ != 0
-        ) {
-            // mintValue from ERC 3525
-            _allSlots[_allSlotsIndex[slot_]].mintableValue -= value_;
-        } else if (to_ == address(0) && toTokenId_ == 0) {
             _allSlots[_allSlotsIndex[slot_]].mintableValue += value_;
+
         }
     }
 

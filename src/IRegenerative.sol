@@ -14,15 +14,15 @@ interface IRegenerative {
 
     function highYieldSecsOf(uint256 tokenId_) external view returns (uint256);
 
-    function mint(uint256 slot_, uint256 value_) external;
+    function mint(address currency_, uint256 slot_, uint256 value_) external;
 
-    function merge(uint256[] calldata tokenIds_, uint256 highYieldSecs_)
-        external;
+    function merge(uint256[] calldata tokenIds_) external;
 
     function burn(uint256 tokenId_) external;
 
-    function updateHighYieldSecsByTokenId(uint256 tokenId_, uint256 secs_)
-        external;
+    function updateStakeDataByTokenId(uint256 tokenId_, uint256 secs_) external;
+
+    function removeStakeDataByTokenId(uint256 tokenId_) external;
 }
 
 struct NftBalance {
