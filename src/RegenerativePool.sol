@@ -86,15 +86,21 @@ contract RegenerativePool is
      *  stake functions
      *  the decimals of value_ is valueDecimals_
      */
-    function stake(uint256 tokenId_, uint256 value_) public {
-        if (msg.sender != erc3525.ownerOf(tokenId_))
-            revert Constants.NotOwner();
+    function stake(uint256[] memory tokenIds_, uint256[] memory values_)
+        external
+    {
+        uint256 length = tokenIds_.length;
 
-        _stake(tokenId_, value_);
-    }
-
-    function stake(uint256 tokenId_) external {
-        stake(tokenId_, 0);
+        if (length != values_.length) revert Constants.ListMismatch();
+        
+        for (uint256 i = 0; i < length; i++) {
+            if (msg.sender != erc3525.ownerOf(tokenIds_[i])) revert Constants.NotOwner();
+            if (values_[i] == 0) {
+                _stake(tokenIds_[i], 0);
+            } else {
+                _stake(tokenIds_[i], values_[i]);
+            }
+        }
     }
 
     /**

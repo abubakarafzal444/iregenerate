@@ -22,10 +22,16 @@ contract RegenerativeNFT is
         uint8 decimals_
     ) external initializer {
         ERC3525Upgradeable.__ERC3525_init(name_, symbol_, decimals_);
+        OwnableUpgradeable.__Ownable_init();
     }
 
     function setRegenerativePool(address addr_) external onlyOwner {
         RegenerativePool = addr_;
+    }
+
+    modifier onlyPool() {
+        if (msg.sender != RegenerativePool) revert Constants.OnlyStake();
+        _;
     }
 
     function balanceInSlot(uint256 slot_) public view returns (uint256) {
@@ -36,9 +42,7 @@ contract RegenerativeNFT is
     function slotTotalValue(uint256 slot_) public view returns (uint256) {
         if (!_slotExists(slot_)) return 0;
         SlotData memory slotdata = getSlotSnapshot(slot_);
-        return
-            slotdata.rwaValue *
-            slotdata.rwaAmount;
+        return slotdata.rwaValue * slotdata.rwaAmount;
     }
 
     function addValueInSlot(uint256 slot_, uint256 rwaAmount_)
@@ -72,10 +76,7 @@ contract RegenerativeNFT is
         return ERC3525Upgradeable.getTokenSnapshot(tokenId_).highYieldSecs;
     }
 
-    function mint(
-        uint256 slot_,
-        uint256 value_
-    ) external {
+    function mint(uint256 slot_, uint256 value_) external {
         // uint256 reHolding = OwnerChecker(Constants.RE_NFT).balanceOf(msg.sender);
         // uint256 reStaking = OwnerChecker(Constants.RE_STAKE)
         //     .nftBalance(msg.sender)
@@ -85,13 +86,18 @@ contract RegenerativeNFT is
         //     revert Constants.NotQualified();
 
         if (!_slotExists(slot_)) revert Constants.InvalidSlot();
-        if (balanceInSlot(slot_) < value_) revert Constants.ExceedTVL();
-
         SlotData memory slotData = getSlotSnapshot(slot_);
+        if (slotData.mintableValue < value_) revert Constants.ExceedTVL();
         if (value_ < slotData.minimumValue)
             revert Constants.InsufficientBalance();
 
-        if (IERC20(Constants.USDC).transferFrom(msg.sender, Constants.MULTISIG, value_)) {
+        if (
+            IERC20(getSlotSnapshot(slot_).currency).transferFrom(
+                msg.sender,
+                Constants.MULTISIG,
+                value_
+            )
+        ) {
             _mintValue(msg.sender, slot_, value_);
         }
     }
@@ -100,19 +106,14 @@ contract RegenerativeNFT is
         _merge(tokenIds_);
     }
 
-    modifier onlyPool() {
-        if (msg.sender != RegenerativePool) revert Constants.OnlyStake();
-        _;
-    }
-
     function burn(uint256 tokenId_) external onlyPool {
         _burn(tokenId_);
     }
 
-    function updateStakeDataByTokenId(
-        uint256 tokenId_,
-        uint256 secs_
-    ) external onlyPool {
+    function updateStakeDataByTokenId(uint256 tokenId_, uint256 secs_)
+        external
+        onlyPool
+    {
         _updateStakeDataByTokenId(tokenId_, secs_);
     }
 

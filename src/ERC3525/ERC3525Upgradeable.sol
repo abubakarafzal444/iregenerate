@@ -461,13 +461,16 @@ abstract contract ERC3525Upgradeable is
     function _merge(uint256[] calldata tokenIds_) internal {
         uint256 length = tokenIds_.length;
         uint256 highYieldSecs = 0;
+        uint256 balance = 0;
+
         TokenData storage targetTokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
         if (msg.sender != targetTokenData.owner) revert Constants.NotOwner();
+
         uint256 maturity = targetTokenData.maturity;
         for (uint256 i = 1; i < length; i++) {
-            if (msg.sender != ownerOf(tokenIds_[i]))
-                revert Constants.NotOwner();
+            if (msg.sender != ownerOf(tokenIds_[i])) revert Constants.NotOwner();
             TokenData memory sourceTokenData = _allTokens[_allTokensIndex[tokenIds_[i]]];
+            balance += sourceTokenData.balance;
             _transferValue(sourceTokenData.id, tokenIds_[0], sourceTokenData.balance);
             highYieldSecs += sourceTokenData.highYieldSecs;
             if (maturity < sourceTokenData.maturity) {
@@ -476,6 +479,7 @@ abstract contract ERC3525Upgradeable is
             _burn(tokenIds_[i]);
         }
         targetTokenData.maturity = maturity;
+        targetTokenData.balance = balance;
         targetTokenData.highYieldSecs += highYieldSecs;
     }
 

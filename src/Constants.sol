@@ -60,4 +60,5 @@ library Constants {
     error NotClamiable();
     error InsufficientBalance();
     error ExceedUnits();
+    error ListMismatch();
 }

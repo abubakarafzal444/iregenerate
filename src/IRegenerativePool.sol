@@ -9,15 +9,10 @@ interface IRegenerativePool {
     /**
      * @notice Stake ERC3525 token into Regenerative Pool with specific value.
      * this function will create new token
-     * @param tokenId_ The token to stake into
-     * @param value_ The staked value
+     * @param tokenIds_ The tokens to stake into
+     * @param values_ The staked values for corresponding tokenId
      */
-    function stake(uint256 tokenId_, uint256 value_) external;
-
-    /**
-     * @notice 
-     */
-    function stake(uint256 tokenId_) external;
+    function stake(uint256[] memory tokenIds_, uint256[] memory values_) external;
 
     function claim() external;
 
