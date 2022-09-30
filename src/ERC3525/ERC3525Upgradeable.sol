@@ -5,18 +5,19 @@ import "../Constants.sol";
 import "./utils/StringConvertor.sol";
 import "./extensions/IERC3525Metadata.sol";
 import "./IERC3525Receiver.sol";
+import "./IERC3525.sol";
 import "./periphery/interface/IERC3525MetadataDescriptor.sol";
 import "openzeppelin-contracts/interfaces/IERC721Enumerable.sol";
 import "openzeppelin-contracts/interfaces/IERC721Receiver.sol";
+import "openzeppelin-contracts/interfaces/IERC721.sol";
 import "openzeppelin-contracts/utils/Strings.sol";
 import "openzeppelin-contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
-import "openzeppelin-contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "openzeppelin-contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "openzeppelin-contracts-upgradeable/utils/AddressUpgradeable.sol";
 
 abstract contract ERC3525Upgradeable is
-    IERC721Enumerable,
     IERC3525Metadata,
+    IERC721Enumerable,
     ERC165Upgradeable,
     ContextUpgradeable
 {
@@ -89,7 +90,9 @@ abstract contract ERC3525Upgradeable is
     {
         return
             interfaceId == type(IERC3525).interfaceId ||
+            interfaceId == type(IERC721).interfaceId ||
             interfaceId == type(IERC3525Metadata).interfaceId ||
+            interfaceId == type(IERC721Enumerable).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -217,6 +220,10 @@ abstract contract ERC3525Upgradeable is
                 : bytes(baseURI).length > 0
                 ? string(abi.encodePacked(baseURI, tokenId_.toString()))
                 : "";
+    }
+
+    function getTokenSnapshot(uint256 tokenId_) public view returns (TokenData memory) {
+        return _allTokens[_allTokensIndex[tokenId_]];
     }
 
     function approve(
@@ -451,6 +458,27 @@ abstract contract ERC3525Upgradeable is
             _allTokens[_allTokensIndex[tokenId_]].id == tokenId_;
     }
 
+    function _merge(uint256[] calldata tokenIds_) internal {
+        uint256 length = tokenIds_.length;
+        uint256 highYieldSecs = 0;
+        TokenData storage targetTokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
+        if (msg.sender != targetTokenData.owner) revert Constants.NotOwner();
+        uint256 maturity = targetTokenData.maturity;
+        for (uint256 i = 1; i < length; i++) {
+            if (msg.sender != ownerOf(tokenIds_[i]))
+                revert Constants.NotOwner();
+            TokenData memory sourceTokenData = _allTokens[_allTokensIndex[tokenIds_[i]]];
+            _transferValue(sourceTokenData.id, tokenIds_[0], sourceTokenData.balance);
+            highYieldSecs += sourceTokenData.highYieldSecs;
+            if (maturity < sourceTokenData.maturity) {
+                maturity = sourceTokenData.maturity;
+            }
+            _burn(tokenIds_[i]);
+        }
+        targetTokenData.maturity = maturity;
+        targetTokenData.highYieldSecs += highYieldSecs;
+    }
+
     function _mintValue(
         address to_,
         uint256 slot_,
@@ -572,6 +600,17 @@ abstract contract ERC3525Upgradeable is
         _allTokens.pop();
     }
 
+    function _updateStakeDataByTokenId(
+        uint256 tokenId_,
+        uint256 secs_
+    ) internal {
+        _allTokens[_allTokensIndex[tokenId_]].highYieldSecs += secs_;
+    }
+
+    function _removeStakeDataByTokenId(uint256 tokenId_) internal {
+        delete _allTokens[_allTokensIndex[tokenId_]].highYieldSecs;
+    }
+
     function _approve(address to_, uint256 tokenId_) internal virtual {
         _allTokens[_allTokensIndex[tokenId_]].approved = to_;
         emit Approval(ERC3525Upgradeable.ownerOf(tokenId_), to_, tokenId_);
@@ -623,14 +662,25 @@ abstract contract ERC3525Upgradeable is
         uint256 toTokenId_,
         uint256 value_
     ) internal virtual {
-        require(_exists(fromTokenId_), "ERC35255: transfer from nonexistent token");
+        require(
+            _exists(fromTokenId_),
+            "ERC35255: transfer from nonexistent token"
+        );
         require(_exists(toTokenId_), "ERC35255: transfer to nonexistent token");
 
-        TokenData storage fromTokenData = _allTokens[_allTokensIndex[fromTokenId_]];
+        TokenData storage fromTokenData = _allTokens[
+            _allTokensIndex[fromTokenId_]
+        ];
         TokenData storage toTokenData = _allTokens[_allTokensIndex[toTokenId_]];
 
-        require(fromTokenData.balance >= value_, "ERC3525: transfer amount exceeds balance");
-        require(fromTokenData.slot == toTokenData.slot, "ERC3535: transfer to token with different slot");
+        require(
+            fromTokenData.balance >= value_,
+            "ERC3525: transfer amount exceeds balance"
+        );
+        require(
+            fromTokenData.slot == toTokenData.slot,
+            "ERC3535: transfer to token with different slot"
+        );
 
         _beforeValueTransfer(
             fromTokenData.owner,

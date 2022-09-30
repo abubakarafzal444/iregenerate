@@ -10,11 +10,11 @@ interface IRegenerative {
 
     function removeValueInSlot(uint256 slot_, uint256 rwaAmount_) external;
 
-    function createSlot(uint256 rwaAmount_, uint256 rwaValue_) external;
+    function createSlot(uint256 rwaAmount_, uint256 rwaValue_, uint256 minimumValue_, address currency_) external;
 
     function highYieldSecsOf(uint256 tokenId_) external view returns (uint256);
 
-    function mint(address currency_, uint256 slot_, uint256 value_) external;
+    function mint(uint256 slot_, uint256 value_) external;
 
     function merge(uint256[] calldata tokenIds_) external;
 

@@ -4,7 +4,10 @@ pragma solidity ^0.8.0;
 import "./ERC3525Upgradeable.sol";
 import "./extensions/IERC3525SlotEnumerable.sol";
 
-contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnumerable {
+contract ERC3525SlotEnumerableUpgradeable is
+    ERC3525Upgradeable,
+    IERC3525SlotEnumerable
+{
     struct SlotData {
         uint256 slot;
         uint256[] slotTokens;
@@ -22,8 +25,28 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
     // slot => index
     mapping(uint256 => uint256) private _allSlotsIndex;
 
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(IERC165, ERC3525Upgradeable)
+        returns (bool)
+    {
+        return
+            interfaceId == type(IERC3525SlotEnumerable).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
     function slotCount() public view virtual override returns (uint256) {
         return _allSlots.length;
+    }
+
+    function getSlotSnapshot(uint256 slot_)
+        public
+        view
+        returns (SlotData memory)
+    {
+        return _allSlots[_allSlotsIndex[slot_]];
     }
 
     function slotByIndex(uint256 index_)
@@ -44,6 +67,45 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
         return
             _allSlots.length != 0 &&
             _allSlots[_allSlotsIndex[slot_]].slot == slot_;
+    }
+
+    function _addValueInSlot(uint256 slot_, uint256 rwaAmount_) internal {
+        _allSlots[_allSlotsIndex[slot_]].rwaAmount += rwaAmount_;
+        uint256 addedValue = rwaAmount_ *
+            _allSlots[_allSlotsIndex[slot_]].rwaValue;
+        _allSlots[_allSlotsIndex[slot_]].mintableValue += addedValue;
+    }
+
+    function _removeValueInSlot(uint256 slot_, uint256 rwaAmount_) internal {
+        uint256 removedValue = rwaAmount_ *
+            _allSlots[_allSlotsIndex[slot_]].rwaValue;
+        uint256 balance = _allSlots[_allSlotsIndex[slot_]].mintableValue;
+
+        if (removedValue > balance) revert Constants.InsufficientBalance();
+        if (rwaAmount_ > _allSlots[_allSlotsIndex[slot_]].rwaAmount)
+            revert Constants.ExceedUnits();
+
+        _allSlots[_allSlotsIndex[slot_]].rwaAmount -= rwaAmount_;
+        _allSlots[_allSlotsIndex[slot_]].mintableValue -= removedValue;
+    }
+
+    function _createSlot(
+        uint256 rwaAmount_,
+        uint256 rwaValue_,
+        uint256 minimumValue_,
+        address currency_
+    ) internal {
+        uint256 slotId = slotCount() + 1;
+        SlotData memory slotData = SlotData({
+            slot: slotId,
+            slotTokens: new uint256[](0),
+            minimumValue: minimumValue_,
+            mintableValue: rwaAmount_ * rwaValue_,
+            rwaValue: rwaValue_,
+            rwaAmount: rwaAmount_,
+            currency: currency_
+        });
+        _addSlotToAllSlotsEnumeration(slotData);
     }
 
     function tokenSupplyInSlot(uint256 slot_)
@@ -84,6 +146,23 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
             slotData.slotTokens[_slotTokensIndex[slot_][tokenId_]] == tokenId_;
     }
 
+    function _beforeValueTransfer(
+        address from_,
+        address to_,
+        uint256 fromTokenId_,
+        uint256 toTokenId_,
+        uint256 slot_,
+        uint256 value_
+    ) internal virtual override {
+        //Shh - currently unused
+        from_;
+        fromTokenId_;
+        to_;
+        toTokenId_;
+        slot_;
+        value_;
+    }
+
     function _afterValueTransfer(
         address from_,
         address to_,
@@ -106,7 +185,6 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
         ) {
             _removeTokenFromSlotEnumeration(slot_, fromTokenId_);
             _allSlots[_allSlotsIndex[slot_]].mintableValue += value_;
-
         }
     }
 
