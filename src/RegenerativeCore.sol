@@ -30,6 +30,8 @@ abstract contract RegenerativeCore {
 
     IERC3525 public erc3525;
     IRegenerative public iregenerative;
+    address public currency;
+    mapping(uint256 => bool) public slots;
 
     // The durations of Re Staking Records
     mapping(address => Duration[]) _reStakingDurations;
@@ -81,7 +83,8 @@ abstract contract RegenerativeCore {
             );
             _stakingInfos[tokenId].claimtime = currtime_;
         }
-        IERC20(Constants.USDC).transfer(msg.sender, balance);
+
+        Constants.transferCurrencyTo(msg.sender, currency, balance, erc3525.valueDecimals());
         emit Claim(msg.sender, balance);
     }
 
@@ -92,8 +95,8 @@ abstract contract RegenerativeCore {
         for (uint256 i = 0; i < length; i++) {
             uint256 tokenId = tokenIds_[i];
 
-            if (tokenId != _stakingIds[msg.sender][_tokenIdsIndex[tokenId]])
-                revert Constants.NotStaker();
+            if (tokenId != _stakingIds[msg.sender][_tokenIdsIndex[tokenId]]) revert Constants.NotStaker();
+            if (!slots[erc3525.slotOf(tokenIds_[i])]) revert Constants.InvalidSlot();
 
             balance += _calculateClaimableYield(
                 tokenId,
@@ -114,16 +117,14 @@ abstract contract RegenerativeCore {
             emit Unstake(msg.sender, tokenId);
         }
 
-        IERC20(Constants.USDC).transfer(msg.sender, balance);
+        Constants.transferCurrencyTo(msg.sender, currency, balance, erc3525.valueDecimals());
         emit Claim(msg.sender, balance);
     }
 
     function _removeTokenIdFromStakesEnumeration(uint256 tokenId_) internal {
         uint256 tokenIndex = _tokenIdsIndex[tokenId_];
         uint256 lastIndex = _stakingIds[msg.sender].length - 1;
-        _stakingIds[msg.sender][tokenIndex] = _stakingIds[msg.sender][
-            lastIndex
-        ];
+        _stakingIds[msg.sender][tokenIndex] = _stakingIds[msg.sender][lastIndex];
         _stakingIds[msg.sender].pop();
     }
 
@@ -136,6 +137,7 @@ abstract contract RegenerativeCore {
             uint256 tokenId = tokenIds_[i];
             if (msg.sender != erc3525.ownerOf(tokenId))
                 revert Constants.NotOwner();
+            if (!slots[erc3525.slotOf(tokenId)]) revert Constants.InvalidSlot();
 
             principal += erc3525.balanceOf(tokenId);
             bonusYield += _calculateClaimableYield(
@@ -149,7 +151,7 @@ abstract contract RegenerativeCore {
             iregenerative.burn(tokenId);
         }
 
-        IERC20(Constants.USDC).transfer(msg.sender, principal + bonusYield);
+        Constants.transferCurrencyTo(msg.sender, currency, principal + bonusYield, erc3525.valueDecimals());
         emit Redeem(msg.sender, principal);
         emit Claim(msg.sender, bonusYield);
     }
@@ -181,9 +183,7 @@ abstract contract RegenerativeCore {
 
         uint256 length = _reStakingDurations[msg.sender].length;
         for (uint256 j = 0; j < length; j++) {
-            Duration memory reStakingDuration = _reStakingDurations[msg.sender][
-                j
-            ];
+            Duration memory reStakingDuration = _reStakingDurations[msg.sender][j];
             // this Re staking duration is behind
             // this staking info
             if (reStakingDuration.start >= stakingInfo.unstaketime) break;

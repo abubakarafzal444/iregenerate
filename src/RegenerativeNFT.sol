@@ -6,6 +6,7 @@ import "./IRegenerative.sol";
 import "./Constants.sol";
 import "openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "openzeppelin-contracts/interfaces/IERC20.sol";
+import "openzeppelin-contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-contracts/proxy/utils/UUPSUpgradeable.sol";
 
 contract RegenerativeNFT is
@@ -30,7 +31,7 @@ contract RegenerativeNFT is
     }
 
     modifier onlyPool() {
-        if (msg.sender != RegenerativePool) revert Constants.OnlyStake();
+        if (msg.sender != RegenerativePool) revert Constants.OnlyPool();
         _;
     }
 
@@ -92,11 +93,7 @@ contract RegenerativeNFT is
             revert Constants.InsufficientBalance();
 
         if (
-            IERC20(getSlotSnapshot(slot_).currency).transferFrom(
-                msg.sender,
-                Constants.MULTISIG,
-                value_
-            )
+            Constants.transferCurrencyTo(msg.sender, slotData.currency, value_, ERC3525Upgradeable.valueDecimals())
         ) {
             _mintValue(msg.sender, slot_, value_);
         }

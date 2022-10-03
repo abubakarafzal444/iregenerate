@@ -222,7 +222,12 @@ abstract contract ERC3525Upgradeable is
                 : "";
     }
 
-    function getTokenSnapshot(uint256 tokenId_) public view returns (TokenData memory) {
+    function getTokenSnapshot(uint256 tokenId_)
+        public
+        view
+        returns (TokenData memory)
+    {
+        require(_exists(tokenId_), "ERC3525: snapshot query for nonexistent token");
         return _allTokens[_allTokensIndex[tokenId_]];
     }
 
@@ -460,18 +465,19 @@ abstract contract ERC3525Upgradeable is
 
     function _merge(uint256[] calldata tokenIds_) internal {
         uint256 length = tokenIds_.length;
-        uint256 highYieldSecs = 0;
-        uint256 balance = 0;
 
         TokenData storage targetTokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
         if (msg.sender != targetTokenData.owner) revert Constants.NotOwner();
 
         uint256 maturity = targetTokenData.maturity;
+        uint256 balance = targetTokenData.balance;
+        uint256 highYieldSecs = targetTokenData.highYieldSecs;
+
         for (uint256 i = 1; i < length; i++) {
             if (msg.sender != ownerOf(tokenIds_[i])) revert Constants.NotOwner();
             TokenData memory sourceTokenData = _allTokens[_allTokensIndex[tokenIds_[i]]];
             balance += sourceTokenData.balance;
-            _transferValue(sourceTokenData.id, tokenIds_[0], sourceTokenData.balance);
+            _transferValue(sourceTokenData.id, targetTokenData.id, sourceTokenData.balance);
             highYieldSecs += sourceTokenData.highYieldSecs;
             if (maturity < sourceTokenData.maturity) {
                 maturity = sourceTokenData.maturity;
@@ -539,8 +545,8 @@ abstract contract ERC3525Upgradeable is
         _beforeValueTransfer(owner, address(0), tokenId_, 0, slot, value);
 
         _clearApprovedValues(tokenId_);
-        _removeTokenFromAllTokensEnumeration(tokenId_);
         _removeTokenFromOwnerEnumeration(owner, tokenId_);
+        _removeTokenFromAllTokensEnumeration(tokenId_);
 
         emit TransferValue(tokenId_, 0, value);
         emit Transfer(owner, address(0), tokenId_);
@@ -604,10 +610,9 @@ abstract contract ERC3525Upgradeable is
         _allTokens.pop();
     }
 
-    function _updateStakeDataByTokenId(
-        uint256 tokenId_,
-        uint256 secs_
-    ) internal {
+    function _updateStakeDataByTokenId(uint256 tokenId_, uint256 secs_)
+        internal
+    {
         _allTokens[_allTokensIndex[tokenId_]].highYieldSecs += secs_;
     }
 
@@ -666,15 +671,10 @@ abstract contract ERC3525Upgradeable is
         uint256 toTokenId_,
         uint256 value_
     ) internal virtual {
-        require(
-            _exists(fromTokenId_),
-            "ERC35255: transfer from nonexistent token"
-        );
-        require(_exists(toTokenId_), "ERC35255: transfer to nonexistent token");
+        require(_exists(fromTokenId_), "ERC3525: transfer from nonexistent token");
+        require(_exists(toTokenId_), "ERC3525: transfer to nonexistent token");
 
-        TokenData storage fromTokenData = _allTokens[
-            _allTokensIndex[fromTokenId_]
-        ];
+        TokenData storage fromTokenData = _allTokens[_allTokensIndex[fromTokenId_]];
         TokenData storage toTokenData = _allTokens[_allTokensIndex[toTokenId_]];
 
         require(
@@ -683,7 +683,7 @@ abstract contract ERC3525Upgradeable is
         );
         require(
             fromTokenData.slot == toTokenData.slot,
-            "ERC3535: transfer to token with different slot"
+            "ERC3525: transfer to token with different slot"
         );
 
         _beforeValueTransfer(

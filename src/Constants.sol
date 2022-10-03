@@ -2,6 +2,10 @@
 
 pragma solidity ^0.8.6;
 
+import "./ERC3525/IERC3525.sol";
+import "openzeppelin-contracts/token/ERC20/ERC20.sol";
+import "./IRegenerative.sol";
+
 library Constants {
     enum ClaimType {
         LINEAR,
@@ -55,10 +59,23 @@ library Constants {
     error ExceedTVL();
     error NotOwner();
     error NotStaker();
-    error OnlyStake();
+    error OnlyPool();
     error NotApproved();
     error NotClamiable();
     error InsufficientBalance();
     error ExceedUnits();
     error ListMismatch();
+
+    function transferCurrencyTo(
+        address to_,
+        address currency_,
+        uint256 value_,
+        uint256 valueDecimals_
+    ) internal returns(bool) {
+        
+        uint256 balance = value_ * 10**ERC20(currency_).decimals() /
+        10**valueDecimals_;
+        
+        return IERC20(currency_).transfer(to_, balance);
+    }
 }

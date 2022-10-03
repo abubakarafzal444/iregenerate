@@ -46,6 +46,7 @@ contract ERC3525SlotEnumerableUpgradeable is
         view
         returns (SlotData memory)
     {
+        require(_slotExists(slot_), "ERC3525: snapshot query for nonexistent slot");
         return _allSlots[_allSlotsIndex[slot_]];
     }
 
@@ -146,23 +147,6 @@ contract ERC3525SlotEnumerableUpgradeable is
             slotData.slotTokens[_slotTokensIndex[slot_][tokenId_]] == tokenId_;
     }
 
-    function _beforeValueTransfer(
-        address from_,
-        address to_,
-        uint256 fromTokenId_,
-        uint256 toTokenId_,
-        uint256 slot_,
-        uint256 value_
-    ) internal virtual override {
-        //Shh - currently unused
-        from_;
-        fromTokenId_;
-        to_;
-        toTokenId_;
-        slot_;
-        value_;
-    }
-
     function _afterValueTransfer(
         address from_,
         address to_,
@@ -207,7 +191,7 @@ contract ERC3525SlotEnumerableUpgradeable is
         SlotData storage slotData = _allSlots[_allSlotsIndex[slot_]];
         uint256 lastTokenIndex = slotData.slotTokens.length - 1;
         uint256 lastTokenId = slotData.slotTokens[lastTokenIndex];
-        uint256 tokenIndex = slotData.slotTokens[tokenId_];
+        uint256 tokenIndex = _slotTokensIndex[slot_][tokenId_];
 
         slotData.slotTokens[tokenIndex] = lastTokenId;
         _slotTokensIndex[slot_][lastTokenId] = tokenIndex;

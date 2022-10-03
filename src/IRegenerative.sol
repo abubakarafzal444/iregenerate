@@ -1,6 +1,8 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "./ERC3525/ERC3525SlotEnumerableUpgradeable.sol";
+
 interface IRegenerative {
     function balanceInSlot(uint256 slot_) external view returns (uint256);
 
@@ -25,16 +27,11 @@ interface IRegenerative {
     function removeStakeDataByTokenId(uint256 tokenId_) external;
 }
 
-struct NftBalance {
-    uint256 stakingAmount;
-    uint256 burnableAmount;
-}
-
 interface OwnerChecker {
     function balanceOf(address account) external view returns (uint256);
 
     function nftBalance(address account)
         external
         view
-        returns (NftBalance memory);
+        returns (Constants.NftBalance memory);
 }

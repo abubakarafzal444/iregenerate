@@ -16,11 +16,13 @@ import "openzeppelin-contracts/proxy/utils/UUPSUpgradeable.sol";
 import "../src/UUPSProxy.sol";
 
 contract RegenerativeTest is Test {
-    UUPSProxy nftProxy;
-    UUPSProxy poolProxy;
+    using stdStorage for StdStorage;
+
     ERC20 erc20;
-    RegenerativeNFT nftLogic;
-    RegenerativePool poolLogic;
+    RegenerativeNFT nft;
+    RegenerativePool pool;
+
+    uint256 constant ONE_UNIT = 10**6;
 
     address owner = makeAddr("owner");
     address alice = makeAddr("alice");
@@ -29,217 +31,134 @@ contract RegenerativeTest is Test {
 
     function setUp() public {
         vm.startPrank(owner);
+
         erc20 = new ERC20("TestUSDC", "TUSDC");
-        nftLogic = new RegenerativeNFT();
-        poolLogic = new RegenerativePool();
-        nftProxy = new UUPSProxy(
-            address(nftLogic),
-            abi.encodeWithSelector(
-                nftLogic.initialize.selector,
-                "RegenerativeNFT",
-                "RGT",
-                6
-            )
-        );
-        poolProxy = new UUPSProxy(
-            address(poolLogic),
-            abi.encodeWithSelector(
-                poolLogic.initialize.selector,
-                address(nftProxy),
-                block.timestamp + 8_640_000
-            )
-        );
 
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(
-                nftLogic.setRegenerativePool.selector,
-                address(poolProxy)
-            )
-        );
+        nft = new RegenerativeNFT();
+        nft.initialize("RegenerativeNFT", "RGT", 6);
 
-        deal(address(erc20), alice, 1_000_000 * 10**erc20.decimals());
-        deal(address(erc20), bob, 1_000_000 * 10**erc20.decimals());
-        deal(address(erc20), charlie, 1_000_000 * 10**erc20.decimals());
+        pool = new RegenerativePool();
 
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(
-                nftLogic.createSlot.selector,
-                1,
-                2_000_000 * 10**erc20.decimals(),
-                300 * 10**erc20.decimals(),
-                address(erc20)
-            )
-        );
+        nft.setRegenerativePool(address(pool));
+        nft.createSlot(1, 2_000_000 * ONE_UNIT, 300 * ONE_UNIT, address(erc20));
 
+        deal(address(erc20), alice, 1_000_000 * ONE_UNIT);
+        deal(address(erc20), bob, 1_000_000 * ONE_UNIT);
+        deal(address(erc20), charlie, 1_000_000 * ONE_UNIT);
+
+        changePrank(alice);
+        erc20.approve(address(nft), UINT256_MAX);
+
+        changePrank(bob);
+        erc20.approve(address(nft), UINT256_MAX);
+        nft.mint(1, 1_000 * ONE_UNIT);
+        nft.mint(1, 20_000 * ONE_UNIT);
+        nft.mint(1, 9_000 * ONE_UNIT);
+        
         vm.stopPrank();
-    }
-
-    function testValueDecimals() public {
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSignature("valueDecimals()")
-        );
-        if (success) {
-            uint8 decimals = abi.decode(result, (uint8));
-            emit log_uint(decimals);
-        }
-    }
-
-    function testLocktime() public {
-        (bool success, bytes memory result) = address(poolProxy).call(
-            abi.encodeWithSignature("LOCK_TIME()")
-        );
-        if (success) {
-            uint256 locktime = abi.decode(result, (uint256));
-            emit log_uint(locktime);
-        }
     }
 
     function testMint() public {
         vm.startPrank(alice);
-        erc20.approve(address(nftProxy), UINT256_MAX);
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(
-                nftLogic.mint.selector,
-                1,
-                1_000 * 10**erc20.decimals()
-            )
-        );
-        result;
-        assertTrue(success);
+        nft.mint(1, 1_000 * 10**erc20.decimals());
+        assertEq(alice, nft.ownerOf(4));
         vm.stopPrank();
     }
 
     function testCannotMintWithInvalidSlot() public {
         vm.startPrank(alice);
-        erc20.approve(address(nftProxy), UINT256_MAX);
         vm.expectRevert(Constants.InvalidSlot.selector);
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.mint.selector, 2, 300 * 10**6)
-        );
-        success;
-        result;
+        nft.mint(2, 300 * ONE_UNIT);
         vm.stopPrank();
     }
 
     function testCannotMintWithExceedTVL() public {
         vm.startPrank(alice);
-        erc20.approve(address(nftProxy), UINT256_MAX);
         vm.expectRevert(Constants.ExceedTVL.selector);
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(
-                nftLogic.mint.selector,
-                1,
-                200_000_000 * 10**6
-            )
-        );
-        success;
-        result;
+        nft.mint(1, 200_000_000 * ONE_UNIT);
         vm.stopPrank();
     }
 
     function testCannotMintWithInsufficientBalance() public {
         vm.startPrank(alice);
-        erc20.approve(address(nftProxy), UINT256_MAX);
         vm.expectRevert(Constants.InsufficientBalance.selector);
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.mint.selector, 1, 200 * 10**6)
-        );
-        success;
-        result;
+        nft.mint(1, 200 * ONE_UNIT);
         vm.stopPrank();
     }
 
     function testAddValueInSlot() public {
         vm.startPrank(owner);
-        uint256 beforeAddValue;
-        uint256 afterAddValue;
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.balanceInSlot.selector, 1)
-        );
-        if (success) {
-            beforeAddValue = abi.decode(result, (uint256));
-        }
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.addValueInSlot.selector, 1, 1)
-        );
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.balanceInSlot.selector, 1)
-        );
-        afterAddValue = abi.decode(result, (uint256));
+        uint256 beforeAddValue = nft.balanceInSlot(1);
+        nft.addValueInSlot(1, 1);
+        uint256 afterAddValue = nft.balanceInSlot(1);
         vm.stopPrank();
-        assertEq(afterAddValue - beforeAddValue, 2_000_000 * 10**6);
+        assertEq(afterAddValue - beforeAddValue, 2_000_000 * ONE_UNIT);
     }
 
     function testRemoveValueInSlot() public {
         vm.startPrank(owner);
-        uint256 afterAddValue;
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.removeValueInSlot.selector, 1, 1)
-        );
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.balanceInSlot.selector, 1)
-        );
-        afterAddValue = abi.decode(result, (uint256));
+        nft.removeValueInSlot(1, 1);
+        uint256 afterRemoveValue = nft.balanceInSlot(1);
         vm.stopPrank();
-        assertEq(afterAddValue, 0);
+        assertEq(afterRemoveValue, 0);
     }
 
     function testMerge() public {
-        vm.startPrank(alice);
-        erc20.approve(address(nftProxy), UINT256_MAX);
-
-        (bool success, bytes memory result) = address(nftProxy).call(
-            abi.encodeWithSelector(
-                nftLogic.mint.selector,
-                1,
-                1_000 * 10**erc20.decimals()
-            )
-        );
-
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.getTokenSnapshot.selector, 1)
-        );
-
-        ERC3525Upgradeable.TokenData memory beforeMerge = abi.decode(
-            result,
-            (ERC3525Upgradeable.TokenData)
-        );
-
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(
-                nftLogic.mint.selector,
-                1,
-                20_000 * 10**erc20.decimals()
-            )
-        );
-
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(
-                nftLogic.mint.selector,
-                1,
-                9_000 * 10**erc20.decimals()
-            )
-        );
+        vm.startPrank(bob);
+        ERC3525Upgradeable.TokenData memory beforeMerge = nft.getTokenSnapshot(1);
 
         uint256[] memory tokenIds = new uint256[](3);
         tokenIds[0] = 1;
         tokenIds[1] = 2;
         tokenIds[2] = 3;
+        nft.merge(tokenIds);
 
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.merge.selector, tokenIds)
-        );
-
-        (success, result) = address(nftProxy).call(
-            abi.encodeWithSelector(nftLogic.getTokenSnapshot.selector, 1)
-        );
-
-        ERC3525Upgradeable.TokenData memory afterMerge = abi.decode(
-            result,
-            (ERC3525Upgradeable.TokenData)
-        );
+        ERC3525Upgradeable.TokenData memory afterMerge = nft.getTokenSnapshot(1);
         vm.stopPrank();
-        assertEq(afterMerge.balance - beforeMerge.balance, 29_000 * 10**6);
+        assertEq(afterMerge.balance - beforeMerge.balance, 29_000 * ONE_UNIT);
+    }
+
+    function testCannotMergeWithNotOwner() public {
+        vm.startPrank(alice);
+        uint256[] memory tokenIds = new uint256[](3);
+        tokenIds[0] = 1;
+        tokenIds[1] = 2;
+        tokenIds[2] = 3;
+        vm.expectRevert(Constants.NotOwner.selector);
+        nft.merge(tokenIds);
+        vm.stopPrank();
+    }
+
+    function testBurn() public {
+        vm.startPrank(address(pool));
+        nft.burn(1);
+        vm.expectRevert("ERC3525: owner query for nonexistent token");
+        assertEq(nft.ownerOf(1), address(0));
+        vm.stopPrank();
+    }
+
+    function testCannotBurnWithOnlyPool() public {
+        vm.expectRevert(Constants.OnlyPool.selector);
+        nft.burn(1);
+    }
+
+    function testUpdateStakeDataByTokenId() public {
+        vm.startPrank(address(pool));
+        nft.updateStakeDataByTokenId(1, 20);
+        vm.stopPrank();
+        assertEq(nft.highYieldSecsOf(1), 20);
+    }
+
+    function testRemoveStakeDataByTokenId() public {
+        stdstore
+            .target(address(nft))
+            .sig(nft.highYieldSecsOf.selector)
+            .with_key(1)
+            .checked_write(20);
+        vm.startPrank(address(pool));
+        nft.removeStakeDataByTokenId(1);
+        vm.stopPrank();
+        assertEq(nft.highYieldSecsOf(1), 0);
     }
 }
 
