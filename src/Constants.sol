@@ -7,21 +7,9 @@ import "openzeppelin-contracts/token/ERC20/ERC20.sol";
 import "./IRegenerative.sol";
 
 library Constants {
-    enum ClaimType {
-        LINEAR,
-        ONE_TIME,
-        STAGED
-    }
-
     enum YieldType {
         BONUS_APR,
         BASE_APR
-    }
-
-    enum VoucherType {
-        STANDARD_VESTING,
-        FLEXIBLE_DATE_VESTING,
-        BOUNDING
     }
 
     struct NftBalance {
@@ -41,6 +29,7 @@ library Constants {
     uint256 internal constant HIGH_APR = 25;
     uint32 internal constant PERCENTAGE = 100;
     uint256 internal constant YEAR_IN_SECS = 31_536_000;
+    uint256 internal constant MATURITY = 46_656_000;
     uint256 internal constant LOCK_TIME = 1235468;
     address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -52,7 +41,6 @@ library Constants {
         0x10a92B12Da3DEE9a3916Dbaa8F0e141a75F07126;
     address internal constant MULTISIG =
         0xAcB683ba69202c5ae6a3B9b9b191075295b1c41C;
-    address internal constant REGENERATIVE_NFT = address(0);
 
     error NotQualified();
     error InvalidSlot();
@@ -62,9 +50,11 @@ library Constants {
     error OnlyPool();
     error NotApproved();
     error NotClamiable();
+    error NotRedeemable();
     error InsufficientBalance();
     error ExceedUnits();
     error ListMismatch();
+    error MismatchValue();
 
     function transferCurrencyTo(
         address to_,
@@ -76,6 +66,6 @@ library Constants {
         uint256 balance = value_ * 10**ERC20(currency_).decimals() /
         10**valueDecimals_;
         
-        return IERC20(currency_).transfer(to_, balance);
+        return IERC20(currency_).transferFrom(msg.sender, to_, balance);
     }
 }

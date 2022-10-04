@@ -11,7 +11,6 @@ import "./Constants.sol";
 import "openzeppelin-contracts/interfaces/IERC20.sol";
 import "openzeppelin-contracts/access/Ownable.sol";
 import "openzeppelin-contracts/proxy/utils/UUPSUpgradeable.sol";
-import "openzeppelin-contracts/proxy/utils/Initializable.sol";
 
 contract RegenerativePool is
     Ownable,
@@ -109,7 +108,7 @@ contract RegenerativePool is
     function claim() external {
         if (block.timestamp < LOCK_TIME) revert Constants.NotClamiable();
 
-        _claim(_stakingIds[msg.sender], block.timestamp);
+        _claim(_stakingRecords[msg.sender], uint64(block.timestamp));
     }
 
     /**
@@ -117,7 +116,7 @@ contract RegenerativePool is
      */
     function unstake(uint256[] memory tokenIds_) public {
         _storeReStakeDurations(msg.sender);
-        _unstake(tokenIds_, block.timestamp);
+        _unstake(tokenIds_, uint64(block.timestamp));
     }
 
     function unstake(uint256 tokenId_) external {

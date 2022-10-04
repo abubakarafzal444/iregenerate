@@ -4,6 +4,13 @@ pragma solidity ^0.8.0;
 import "./ERC3525/ERC3525SlotEnumerableUpgradeable.sol";
 
 interface IRegenerative {
+    event Split(address indexed owner_, uint256 indexed tokenId_, uint256 units_, uint256 value_);
+    event Merge(address indexed owner_, uint256 units_, uint256 value_);
+    event SlotValueChanged(uint256 indexed slot_, uint256 oldValue_, uint256 newValue_);
+    event SlotCreated(uint256 indexed slot_, uint256 initValue_, address currency_, uint256 maturity_);
+
+    function maturityOf(uint256 tokenId_) external view returns (uint256);
+
     function balanceInSlot(uint256 slot_) external view returns (uint256);
 
     function slotTotalValue(uint256 slot_) external view returns (uint256);
@@ -12,13 +19,15 @@ interface IRegenerative {
 
     function removeValueInSlot(uint256 slot_, uint256 rwaAmount_) external;
 
-    function createSlot(uint256 rwaAmount_, uint256 rwaValue_, uint256 minimumValue_, address currency_) external;
+    function createSlot(uint256 rwaAmount_, uint256 rwaValue_, uint256 minimumValue_, address currency_, uint256 maturity_) external;
 
     function highYieldSecsOf(uint256 tokenId_) external view returns (uint256);
 
     function mint(uint256 slot_, uint256 value_) external;
 
     function merge(uint256[] calldata tokenIds_) external;
+
+    function split(uint256 tokenId_, uint256[] calldata values_) external;
 
     function burn(uint256 tokenId_) external;
 

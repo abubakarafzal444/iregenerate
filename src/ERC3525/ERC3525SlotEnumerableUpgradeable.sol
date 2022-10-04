@@ -16,6 +16,7 @@ contract ERC3525SlotEnumerableUpgradeable is
         uint256 rwaValue;
         uint256 rwaAmount;
         address currency;
+        uint256 maturity;
     }
     // slot => tokenId => index
     mapping(uint256 => mapping(uint256 => uint256)) private _slotTokensIndex;
@@ -94,7 +95,8 @@ contract ERC3525SlotEnumerableUpgradeable is
         uint256 rwaAmount_,
         uint256 rwaValue_,
         uint256 minimumValue_,
-        address currency_
+        address currency_,
+        uint256 maturity_
     ) internal {
         uint256 slotId = slotCount() + 1;
         SlotData memory slotData = SlotData({
@@ -104,7 +106,8 @@ contract ERC3525SlotEnumerableUpgradeable is
             mintableValue: rwaAmount_ * rwaValue_,
             rwaValue: rwaValue_,
             rwaAmount: rwaAmount_,
-            currency: currency_
+            currency: currency_,
+            maturity: maturity_
         });
         _addSlotToAllSlotsEnumeration(slotData);
     }

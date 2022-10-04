@@ -14,9 +14,10 @@ abstract contract RegenerativeCore {
     }
 
     struct StakingInfo {
-        uint256 staketime;
-        uint256 unstaketime;
-        uint256 claimtime;
+        uint256 tokenId;
+        uint64 staketime;
+        uint64 unstaketime;
+        uint64 claimtime;
     }
 
     event Stake(
@@ -44,16 +45,21 @@ abstract contract RegenerativeCore {
     mapping(address => uint256[]) _stakingIds;
     mapping(uint256 => uint256) _tokenIdsIndex;
 
+    mapping(address => StakingInfo[]) _stakingRecords;
+
     function _stake(uint256 tokenId_, uint256 value_) internal {
-        uint256 currtime = block.timestamp;
+        uint64 currtime = uint64(block.timestamp);
         uint256 tokenId = tokenId_;
         uint256 value = value_;
 
-        _stakingInfos[tokenId_] = StakingInfo({
+        StakingInfo memory stakingInfo = StakingInfo({
+            tokenId: tokenId_,
             staketime: currtime,
             unstaketime: 0,
             claimtime: currtime
         });
+        _tokenIdsIndex[tokenId] = _stakingRecords[msg.sender].length;
+        _stakingRecords[msg.sender].push(stakingInfo);
 
         if (value_ == 0) {
             // stake tokenId_ into the contract
@@ -64,39 +70,40 @@ abstract contract RegenerativeCore {
             tokenId = erc3525.transferFrom(tokenId_, address(this), value_);
         }
 
-        _tokenIdsIndex[tokenId] = _stakingIds[msg.sender].length;
-        _stakingIds[msg.sender].push(tokenId);
+        // _tokenIdsIndex[tokenId] = _stakingIds[msg.sender].length;
+        // _stakingIds[msg.sender].push(tokenId);
 
         emit Stake(msg.sender, tokenId, value);
     }
 
-    function _claim(uint256[] memory tokenIds_, uint256 currtime_) internal {
+    function _claim(StakingInfo[] storage stakingInfos_, uint64 currtime_) internal {
         uint256 balance = 0;
-        uint256 length = tokenIds_.length;
+        uint256 length = stakingInfos_.length;
 
         for (uint256 i = 0; i < length; i++) {
-            uint256 tokenId = tokenIds_[i];
+            StakingInfo storage stakingInfo = stakingInfos_[i];
             balance += _calculateClaimableYield(
-                tokenId,
-                currtime_ - _stakingInfos[tokenId].claimtime,
+                stakingInfo.tokenId,
+                currtime_ - stakingInfo.claimtime,
                 Constants.YieldType.BASE_APR
             );
-            _stakingInfos[tokenId].claimtime = currtime_;
+            stakingInfo.claimtime = currtime_;
         }
 
         Constants.transferCurrencyTo(msg.sender, currency, balance, erc3525.valueDecimals());
         emit Claim(msg.sender, balance);
     }
 
-    function _unstake(uint256[] memory tokenIds_, uint256 currtime_) internal {
+    function _unstake(uint256[] memory tokenIds_, uint64 currtime_) internal {
         uint256 length = tokenIds_.length;
         uint256 balance = 0;
 
         for (uint256 i = 0; i < length; i++) {
-            uint256 tokenId = tokenIds_[i];
+            StakingInfo storage stakingInfo = _stakingRecords[msg.sender][_tokenIdsIndex[i]];
+            uint256 tokenId = stakingInfo.tokenId;
 
-            if (tokenId != _stakingIds[msg.sender][_tokenIdsIndex[tokenId]]) revert Constants.NotStaker();
-            if (!slots[erc3525.slotOf(tokenIds_[i])]) revert Constants.InvalidSlot();
+            if (tokenId != tokenIds_[i]) revert Constants.NotStaker();
+            if (!slots[erc3525.slotOf(tokenId)]) revert Constants.InvalidSlot();
 
             balance += _calculateClaimableYield(
                 tokenId,
@@ -104,14 +111,14 @@ abstract contract RegenerativeCore {
                 Constants.YieldType.BASE_APR
             );
 
-            _stakingInfos[tokenIds_[i]].unstaketime = currtime_;
+            stakingInfo.unstaketime = currtime_;
 
             iregenerative.updateStakeDataByTokenId(
                 tokenId,
                 _calculateHighYieldSecs(tokenId)
             );
 
-            _removeTokenIdFromStakesEnumeration(tokenId);
+            _removeRecordFromStakingRecordsEnumeration(i);
 
             erc3525.safeTransferFrom(address(this), msg.sender, tokenId);
             emit Unstake(msg.sender, tokenId);
@@ -119,6 +126,12 @@ abstract contract RegenerativeCore {
 
         Constants.transferCurrencyTo(msg.sender, currency, balance, erc3525.valueDecimals());
         emit Claim(msg.sender, balance);
+    }
+
+    function _removeRecordFromStakingRecordsEnumeration(uint256 index_) internal {
+        uint256 lastIndex = _stakingRecords[msg.sender].length - 1;
+        _stakingRecords[msg.sender][index_] = _stakingRecords[msg.sender][lastIndex];
+        _stakingRecords[msg.sender].pop();
     }
 
     function _removeTokenIdFromStakesEnumeration(uint256 tokenId_) internal {
@@ -135,8 +148,8 @@ abstract contract RegenerativeCore {
 
         for (uint256 i = 0; i < length; i++) {
             uint256 tokenId = tokenIds_[i];
-            if (msg.sender != erc3525.ownerOf(tokenId))
-                revert Constants.NotOwner();
+            if (iregenerative.maturityOf(tokenId) < block.timestamp) revert Constants.NotRedeemable();
+            if (msg.sender != erc3525.ownerOf(tokenId)) revert Constants.NotOwner();
             if (!slots[erc3525.slotOf(tokenId)]) revert Constants.InvalidSlot();
 
             principal += erc3525.balanceOf(tokenId);

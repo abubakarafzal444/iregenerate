@@ -34,7 +34,7 @@ abstract contract ERC3525Upgradeable is
         address approved;
         address[] valueApprovals;
         uint256 balance;
-        uint256 maturity;
+        uint256 mintTime;
         uint256 highYieldSecs;
     }
 
@@ -227,7 +227,10 @@ abstract contract ERC3525Upgradeable is
         view
         returns (TokenData memory)
     {
-        require(_exists(tokenId_), "ERC3525: snapshot query for nonexistent token");
+        require(
+            _exists(tokenId_),
+            "ERC3525: snapshot query for nonexistent token"
+        );
         return _allTokens[_allTokensIndex[tokenId_]];
     }
 
@@ -466,27 +469,44 @@ abstract contract ERC3525Upgradeable is
     function _merge(uint256[] calldata tokenIds_) internal {
         uint256 length = tokenIds_.length;
 
-        TokenData storage targetTokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
+        TokenData storage targetTokenData = _allTokens[
+            _allTokensIndex[tokenIds_[0]]
+        ];
         if (msg.sender != targetTokenData.owner) revert Constants.NotOwner();
 
-        uint256 maturity = targetTokenData.maturity;
+        uint256 mintTime = targetTokenData.mintTime;
         uint256 balance = targetTokenData.balance;
         uint256 highYieldSecs = targetTokenData.highYieldSecs;
 
         for (uint256 i = 1; i < length; i++) {
-            if (msg.sender != ownerOf(tokenIds_[i])) revert Constants.NotOwner();
-            TokenData memory sourceTokenData = _allTokens[_allTokensIndex[tokenIds_[i]]];
+            if (msg.sender != ownerOf(tokenIds_[i]))
+                revert Constants.NotOwner();
+            TokenData memory sourceTokenData = _allTokens[
+                _allTokensIndex[tokenIds_[i]]
+            ];
             balance += sourceTokenData.balance;
-            _transferValue(sourceTokenData.id, targetTokenData.id, sourceTokenData.balance);
+            _transferValue(
+                sourceTokenData.id,
+                targetTokenData.id,
+                sourceTokenData.balance
+            );
             highYieldSecs += sourceTokenData.highYieldSecs;
-            if (maturity < sourceTokenData.maturity) {
-                maturity = sourceTokenData.maturity;
+            if (mintTime < sourceTokenData.mintTime) {
+                mintTime = sourceTokenData.mintTime;
             }
             _burn(tokenIds_[i]);
         }
-        targetTokenData.maturity = maturity;
+        targetTokenData.mintTime = mintTime;
         targetTokenData.balance = balance;
         targetTokenData.highYieldSecs += highYieldSecs;
+    }
+
+    function _split(uint256 tokenId_, uint256 length_, uint256[] calldata values_) internal {
+        for (uint256 i = 1; i < length_; i++) {
+            uint256 newTokenId = _createDerivedTokenId(tokenId_);
+            _mint(msg.sender, newTokenId, ERC3525Upgradeable.slotOf(tokenId_));
+            _transferValue(tokenId_, newTokenId, values_[i]);
+        }
     }
 
     function _mintValue(
@@ -516,6 +536,7 @@ abstract contract ERC3525Upgradeable is
         uint256 tokenId_,
         uint256 slot_
     ) private {
+        
         TokenData memory tokenData = TokenData({
             id: tokenId_,
             slot: slot_,
@@ -523,7 +544,7 @@ abstract contract ERC3525Upgradeable is
             approved: address(0),
             valueApprovals: new address[](0),
             balance: 0,
-            maturity: block.timestamp,
+            mintTime: block.timestamp,
             highYieldSecs: 0
         });
 
@@ -671,10 +692,15 @@ abstract contract ERC3525Upgradeable is
         uint256 toTokenId_,
         uint256 value_
     ) internal virtual {
-        require(_exists(fromTokenId_), "ERC3525: transfer from nonexistent token");
+        require(
+            _exists(fromTokenId_),
+            "ERC3525: transfer from nonexistent token"
+        );
         require(_exists(toTokenId_), "ERC3525: transfer to nonexistent token");
 
-        TokenData storage fromTokenData = _allTokens[_allTokensIndex[fromTokenId_]];
+        TokenData storage fromTokenData = _allTokens[
+            _allTokensIndex[fromTokenId_]
+        ];
         TokenData storage toTokenData = _allTokens[_allTokensIndex[toTokenId_]];
 
         require(

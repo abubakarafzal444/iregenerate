@@ -18,7 +18,7 @@ import "../src/UUPSProxy.sol";
 contract RegenerativeTest is Test {
     using stdStorage for StdStorage;
 
-    ERC20 erc20;
+    TestUSDC erc20;
     RegenerativeNFT nft;
     RegenerativePool pool;
 
@@ -32,7 +32,7 @@ contract RegenerativeTest is Test {
     function setUp() public {
         vm.startPrank(owner);
 
-        erc20 = new ERC20("TestUSDC", "TUSDC");
+        erc20 = new TestUSDC("TestUSDC", "TUSDC");
 
         nft = new RegenerativeNFT();
         nft.initialize("RegenerativeNFT", "RGT", 6);
@@ -40,12 +40,18 @@ contract RegenerativeTest is Test {
         pool = new RegenerativePool();
 
         nft.setRegenerativePool(address(pool));
-        nft.createSlot(1, 2_000_000 * ONE_UNIT, 300 * ONE_UNIT, address(erc20));
+        nft.createSlot(
+            1,
+            2_000_000 * ONE_UNIT,
+            300 * ONE_UNIT,
+            address(erc20),
+            Constants.MATURITY
+        );
 
         deal(address(erc20), alice, 1_000_000 * ONE_UNIT);
         deal(address(erc20), bob, 1_000_000 * ONE_UNIT);
         deal(address(erc20), charlie, 1_000_000 * ONE_UNIT);
-
+        emit log_named_uint("balance", erc20.balanceOf(alice));
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
 
@@ -54,7 +60,7 @@ contract RegenerativeTest is Test {
         nft.mint(1, 1_000 * ONE_UNIT);
         nft.mint(1, 20_000 * ONE_UNIT);
         nft.mint(1, 9_000 * ONE_UNIT);
-        
+
         vm.stopPrank();
     }
 
@@ -96,6 +102,11 @@ contract RegenerativeTest is Test {
     }
 
     function testRemoveValueInSlot() public {
+        stdstore
+            .target(address(nft))
+            .sig(nft.balanceInSlot.selector)
+            .with_key(1)
+            .checked_write(2_000_000 * ONE_UNIT);
         vm.startPrank(owner);
         nft.removeValueInSlot(1, 1);
         uint256 afterRemoveValue = nft.balanceInSlot(1);
@@ -105,7 +116,9 @@ contract RegenerativeTest is Test {
 
     function testMerge() public {
         vm.startPrank(bob);
-        ERC3525Upgradeable.TokenData memory beforeMerge = nft.getTokenSnapshot(1);
+        ERC3525Upgradeable.TokenData memory beforeMerge = nft.getTokenSnapshot(
+            1
+        );
 
         uint256[] memory tokenIds = new uint256[](3);
         tokenIds[0] = 1;
@@ -113,7 +126,9 @@ contract RegenerativeTest is Test {
         tokenIds[2] = 3;
         nft.merge(tokenIds);
 
-        ERC3525Upgradeable.TokenData memory afterMerge = nft.getTokenSnapshot(1);
+        ERC3525Upgradeable.TokenData memory afterMerge = nft.getTokenSnapshot(
+            1
+        );
         vm.stopPrank();
         assertEq(afterMerge.balance - beforeMerge.balance, 29_000 * ONE_UNIT);
     }
@@ -259,7 +274,7 @@ contract RegenerativePool is
     function claim() external {
         if (block.timestamp < LOCK_TIME) revert Constants.NotClamiable();
 
-        _claim(_stakingIds[msg.sender], block.timestamp);
+        _claim(_stakingRecords[msg.sender], uint64(block.timestamp));
     }
 
     /**
@@ -267,7 +282,7 @@ contract RegenerativePool is
      */
     function unstake(uint256[] memory tokenIds_) public {
         _storeReStakeDurations(msg.sender);
-        _unstake(tokenIds_, block.timestamp);
+        _unstake(tokenIds_, uint64(block.timestamp));
     }
 
     function unstake(uint256 tokenId_) external {
@@ -302,7 +317,7 @@ error NullAddress();
 error InsufficientAllowance(uint256 allowance, uint256 balance);
 error InsufficientBalance(uint256 balance, uint256 transferAmount);
 
-contract ERC20 is IERC20 {
+contract TestUSDC is IERC20 {
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
