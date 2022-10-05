@@ -51,8 +51,8 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
 
     /**
      * @notice Custom function to add value to specific slot
-     * @param slot_ the value will be added into the slot
-     * @param rwaAmount_ the RWA owner wants to add number of RWA amount into the slot
+     * @param slot_ The value will be added into the slot
+     * @param rwaAmount_ The RWA owner wants to add number of RWA amount into the slot
      */
     function _addValueInSlot(uint256 slot_, uint256 rwaAmount_) internal {
         _allSlots[_allSlotsIndex[slot_]].rwaAmount += rwaAmount_;
@@ -63,8 +63,8 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
 
     /**
      * @notice Custom function to add value to specific slot
-     * @param slot_ the value will be removed from the slot
-     * @param rwaAmount_ the RWA owner wants to remove number of RWA amount from the slot
+     * @param slot_ The value will be removed from the slot
+     * @param rwaAmount_ The RWA owner wants to remove number of RWA amount from the slot
      */
     function _removeValueInSlot(uint256 slot_, uint256 rwaAmount_) internal {
         uint256 removedValue = rwaAmount_ *
@@ -84,7 +84,7 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
         uint256 minimumValue_,
         address currency_,
         uint256 maturity_
-    ) internal {
+    ) internal returns (uint256) {
         uint256 slotId = slotCount() + 1;
         SlotData memory slotData = SlotData({
             slot: slotId,
@@ -97,6 +97,7 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
             maturity: maturity_
         });
         _addSlotToAllSlotsEnumeration(slotData);
+        return slotId;
     }
 
     function tokenSupplyInSlot(uint256 slot_) public view virtual override returns (uint256) {

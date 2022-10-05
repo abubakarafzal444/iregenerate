@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.0;
 
 import "openzeppelin-contracts/interfaces/IERC721.sol";
@@ -343,9 +344,9 @@ abstract contract ERC3525Upgradeable is
 
     /**
      * @notice Custom function to merge multiple tokens into one
-     * @param tokenIds_ selected tokens are considered to merge
+     * @param tokenIds_ The selected token ids are about to merge
      */
-    function _merge(uint256[] calldata tokenIds_) internal {
+    function _merge(uint256[] memory tokenIds_) internal {
         uint256 length = tokenIds_.length;
 
         TokenData storage targetTokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
@@ -384,11 +385,11 @@ abstract contract ERC3525Upgradeable is
      * @notice Custom function to split one token to multiple tokens,
      * the total value of splited tokens must be the same as original value.
      * the origin token id should keep the value of index 0 of values_
-     * @param tokenId_ the token id that owner wants to split
-     * @param length_ the number of tokens after split
-     * @param values_ values distribution for splited token ids
+     * @param tokenId_ The token id that owner wants to split
+     * @param length_ The number of tokens after split
+     * @param values_ The values distribution for splited token ids
      */
-    function _split(uint256 tokenId_, uint256 length_, uint256[] calldata values_) internal {
+    function _split(uint256 tokenId_, uint256 length_, uint256[] memory values_) internal {
         for (uint256 i = 1; i < length_; i++) {
             uint256 newTokenId = _createDerivedTokenId(tokenId_);
             _mint(_msgSender(), newTokenId, ERC3525Upgradeable.slotOf(tokenId_));
@@ -505,8 +506,8 @@ abstract contract ERC3525Upgradeable is
 
     /**
      * @notice Custom function to update stake data of token id
-     * @param tokenId_ the stake data of token id needs to be updated
-     * @param secs_ high yield seconds will be claimed once redemption
+     * @param tokenId_ The stake data of token id needs to be updated
+     * @param secs_ The high yield seconds will be claimed once redemption
      */
     function _updateStakeDataByTokenId(uint256 tokenId_, uint256 secs_) internal {
         _allTokens[_allTokensIndex[tokenId_]].highYieldSecs += secs_;
@@ -514,7 +515,7 @@ abstract contract ERC3525Upgradeable is
 
     /**
      * @notice Custom function to remove stake data of token id
-     * @param tokenId_ the stake data of token id needs to be removed
+     * @param tokenId_ The stake data of token id needs to be removed
      */
     function _removeStakeDataByTokenId(uint256 tokenId_) internal {
         delete _allTokens[_allTokensIndex[tokenId_]].highYieldSecs;

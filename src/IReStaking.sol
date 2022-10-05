@@ -1,16 +1,21 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./Constants.sol";
-
 interface IReStaking {
-    function nftBalance(address staker)
-        external
-        view
-        returns (Constants.NftBalance memory);
+    struct NftBalance {
+        uint256 stakingAmount;
+        uint256 burnableAmount;
+    }
 
-    function stakingInfo(address staker, uint256 index)
-        external
-        view
-        returns (Constants.StakingInfo memory);
+    struct StakingInfo {
+        uint256 stakeNFTamount;
+        uint256 leftToUnstakeNFTamount;
+        uint256 staketime;
+        uint256 unstaketime;
+        bool isUnstake;
+    }
+
+    function nftBalance(address staker) external view returns (NftBalance memory);
+
+    function stakingInfo(address staker, uint256 index) external view returns (StakingInfo memory);
 }

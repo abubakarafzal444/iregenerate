@@ -224,7 +224,7 @@ abstract contract RegenerativeCore {
         Duration memory newDuration;
         for (uint256 i = start; i < 2**256 - 1; i++) {
             try IReStaking(Constants.RE_STAKE).stakingInfo(staker, i) returns (
-                Constants.StakingInfo memory stakingInfo
+                IReStaking.StakingInfo memory stakingInfo
             ) {
                 if (stakingInfo.isUnstake) {
                     newDuration = Duration({
