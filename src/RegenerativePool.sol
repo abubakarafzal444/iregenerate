@@ -11,6 +11,7 @@ import "./Constants.sol";
 import "openzeppelin-contracts/interfaces/IERC20.sol";
 import "openzeppelin-contracts/access/Ownable.sol";
 import "openzeppelin-contracts/proxy/utils/UUPSUpgradeable.sol";
+import "openzeppelin-contracts/proxy/utils/Initializable.sol";
 
 contract RegenerativePool is
     Ownable,
@@ -29,56 +30,6 @@ contract RegenerativePool is
         erc3525 = IERC3525(ierc3525_);
         iregenerative = IRegenerative(ierc3525_);
         LOCK_TIME = locktime_;
-    }
-
-    // test func
-    function checkNftBalance(address staker)
-        external
-        view
-        returns (uint256 staked)
-    {
-        return IReStaking(Constants.RE_STAKE).nftBalance(staker).stakingAmount;
-    }
-
-    // test func
-    function checkStakingInfo(address staker, uint256 index)
-        public
-        view
-        returns (
-            uint256 staked,
-            uint256 leftToUnstake,
-            uint256 stakeTime,
-            uint256 unstakeTime,
-            bool isUnstake
-        )
-    {
-        Constants.StakingInfo memory stakingInfo = IReStaking(
-            Constants.RE_STAKE
-        ).stakingInfo(staker, index);
-        return (
-            stakingInfo.stakeNFTamount,
-            stakingInfo.leftToUnstakeNFTamount,
-            stakingInfo.staketime,
-            stakingInfo.unstaketime,
-            stakingInfo.isUnstake
-        );
-    }
-
-    // test func
-    function getReStakingDurationsByAddress(address staker)
-        public
-        returns (uint64[] memory, uint64[] memory)
-    {
-        _storeReStakeDurations(staker);
-        uint256 length = _reStakingDurations[staker].length;
-
-        uint64[] memory starts = new uint64[](length);
-        uint64[] memory ends = new uint64[](length);
-        for (uint256 i = 0; i < length; i++) {
-            starts[i] = _reStakingDurations[staker][i].start;
-            ends[i] = _reStakingDurations[staker][i].end;
-        }
-        return (starts, ends);
     }
 
     /**

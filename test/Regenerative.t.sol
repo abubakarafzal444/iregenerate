@@ -64,54 +64,45 @@ contract RegenerativeTest is Test {
         vm.stopPrank();
     }
 
+    // =========== Regenerative NFT UNIT TEST Start ===========
+
+    function testCreateSlot() public {
+        uint256 beforeCreate = nft.slotCount();
+        vm.prank(owner);
+        nft.createSlot(
+            1,
+            1_000_000 * ONE_UNIT,
+            1_000 * ONE_UNIT,
+            address(erc20),
+            Constants.MATURITY
+        );
+        uint256 afterCreate = nft.slotCount();
+        assertEq(afterCreate - beforeCreate, 1);
+    }
+
     function testMint() public {
-        vm.startPrank(alice);
+        vm.prank(alice);
         nft.mint(1, 1_000 * 10**erc20.decimals());
         assertEq(alice, nft.ownerOf(4));
-        vm.stopPrank();
     }
 
     function testCannotMintWithInvalidSlot() public {
-        vm.startPrank(alice);
+        vm.prank(alice);
         vm.expectRevert(Constants.InvalidSlot.selector);
         nft.mint(2, 300 * ONE_UNIT);
-        vm.stopPrank();
-    }
-
-    function testCannotMintWithExceedTVL() public {
-        vm.startPrank(alice);
-        vm.expectRevert(Constants.ExceedTVL.selector);
-        nft.mint(1, 200_000_000 * ONE_UNIT);
-        vm.stopPrank();
     }
 
     function testCannotMintWithInsufficientBalance() public {
-        vm.startPrank(alice);
+        vm.prank(alice);
         vm.expectRevert(Constants.InsufficientBalance.selector);
+        nft.mint(1, 200_000_000 * ONE_UNIT);
+    }
+
+    function testCannotMintWithBelowMinimumValue() public {
+        vm.startPrank(alice);
+        vm.expectRevert(Constants.BelowMinimumValue.selector);
         nft.mint(1, 200 * ONE_UNIT);
         vm.stopPrank();
-    }
-
-    function testAddValueInSlot() public {
-        vm.startPrank(owner);
-        uint256 beforeAddValue = nft.balanceInSlot(1);
-        nft.addValueInSlot(1, 1);
-        uint256 afterAddValue = nft.balanceInSlot(1);
-        vm.stopPrank();
-        assertEq(afterAddValue - beforeAddValue, 2_000_000 * ONE_UNIT);
-    }
-
-    function testRemoveValueInSlot() public {
-        stdstore
-            .target(address(nft))
-            .sig(nft.balanceInSlot.selector)
-            .with_key(1)
-            .checked_write(2_000_000 * ONE_UNIT);
-        vm.startPrank(owner);
-        nft.removeValueInSlot(1, 1);
-        uint256 afterRemoveValue = nft.balanceInSlot(1);
-        vm.stopPrank();
-        assertEq(afterRemoveValue, 0);
     }
 
     function testMerge() public {
@@ -144,6 +135,66 @@ contract RegenerativeTest is Test {
         vm.stopPrank();
     }
 
+    function testSplit() public {
+        uint256 beforeSplit = nft.balanceOf(bob);
+        uint256[] memory values = new uint256[](3);
+        values[0] = 300 * ONE_UNIT;
+        values[1] = 300 * ONE_UNIT;
+        values[2] = 400 * ONE_UNIT;
+        vm.prank(bob);
+        nft.split(1, values);
+        uint256 afterSplit = nft.balanceOf(bob);
+        assertEq(afterSplit - beforeSplit, 2);
+    }
+
+    function testCannotSplitWithNotOwner() public {
+        uint256[] memory values = new uint256[](3);
+        values[0] = 300 * ONE_UNIT;
+        values[1] = 300 * ONE_UNIT;
+        values[2] = 400 * ONE_UNIT;
+        vm.prank(alice);
+        vm.expectRevert(Constants.NotOwner.selector);
+        nft.split(1, values);
+    }
+
+    function testCannotSplitWithMismatchValue() public {
+        uint256[] memory values = new uint256[](3);
+        values[0] = 300 * ONE_UNIT;
+        values[1] = 300 * ONE_UNIT;
+        values[2] = 300 * ONE_UNIT;
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Constants.MismatchValue.selector,
+                1000 * ONE_UNIT,
+                900 * ONE_UNIT
+            )
+        );
+        nft.split(1, values);
+    }
+
+    function testAddValueInSlot() public {
+        vm.startPrank(owner);
+        uint256 beforeAddValue = nft.balanceInSlot(1);
+        nft.addValueInSlot(1, 1);
+        uint256 afterAddValue = nft.balanceInSlot(1);
+        vm.stopPrank();
+        assertEq(afterAddValue - beforeAddValue, 2_000_000 * ONE_UNIT);
+    }
+
+    function testRemoveValueInSlot() public {
+        stdstore
+            .target(address(nft))
+            .sig(nft.balanceInSlot.selector)
+            .with_key(1)
+            .checked_write(2_000_000 * ONE_UNIT);
+        vm.startPrank(owner);
+        nft.removeValueInSlot(1, 1);
+        uint256 afterRemoveValue = nft.balanceInSlot(1);
+        vm.stopPrank();
+        assertEq(afterRemoveValue, 0);
+    }
+
     function testBurn() public {
         vm.startPrank(address(pool));
         nft.burn(1);
@@ -158,10 +209,11 @@ contract RegenerativeTest is Test {
     }
 
     function testUpdateStakeDataByTokenId() public {
-        vm.startPrank(address(pool));
+        uint256 beforeUpdate = nft.highYieldSecsOf(1);
+        vm.prank(address(pool));
         nft.updateStakeDataByTokenId(1, 20);
-        vm.stopPrank();
-        assertEq(nft.highYieldSecsOf(1), 20);
+        uint256 afterUpdate = nft.highYieldSecsOf(1);
+        assertEq(afterUpdate - beforeUpdate, 20);
     }
 
     function testRemoveStakeDataByTokenId() public {
@@ -170,11 +222,14 @@ contract RegenerativeTest is Test {
             .sig(nft.highYieldSecsOf.selector)
             .with_key(1)
             .checked_write(20);
-        vm.startPrank(address(pool));
+        uint256 beforeRemove = nft.highYieldSecsOf(1);
+        vm.prank(address(pool));
         nft.removeStakeDataByTokenId(1);
-        vm.stopPrank();
-        assertEq(nft.highYieldSecsOf(1), 0);
+        uint256 afterRemove = nft.highYieldSecsOf(1);
+        assertEq(beforeRemove - afterRemove, 20);
     }
+
+    // =========== Regenerative NFT UNIT TEST End ===========
 }
 
 contract RegenerativePool is
@@ -196,62 +251,12 @@ contract RegenerativePool is
         LOCK_TIME = locktime_;
     }
 
-    // test func
-    function checkNftBalance(address staker)
-        external
-        view
-        returns (uint256 staked)
-    {
-        return IReStaking(Constants.RE_STAKE).nftBalance(staker).stakingAmount;
-    }
-
-    // test func
-    function checkStakingInfo(address staker, uint256 index)
-        public
-        view
-        returns (
-            uint256 staked,
-            uint256 leftToUnstake,
-            uint256 stakeTime,
-            uint256 unstakeTime,
-            bool isUnstake
-        )
-    {
-        Constants.StakingInfo memory stakingInfo = IReStaking(
-            Constants.RE_STAKE
-        ).stakingInfo(staker, index);
-        return (
-            stakingInfo.stakeNFTamount,
-            stakingInfo.leftToUnstakeNFTamount,
-            stakingInfo.staketime,
-            stakingInfo.unstaketime,
-            stakingInfo.isUnstake
-        );
-    }
-
-    // test func
-    function getReStakingDurationsByAddress(address staker)
-        public
-        returns (uint64[] memory, uint64[] memory)
-    {
-        _storeReStakeDurations(staker);
-        uint256 length = _reStakingDurations[staker].length;
-
-        uint64[] memory starts = new uint64[](length);
-        uint64[] memory ends = new uint64[](length);
-        for (uint256 i = 0; i < length; i++) {
-            starts[i] = _reStakingDurations[staker][i].start;
-            ends[i] = _reStakingDurations[staker][i].end;
-        }
-        return (starts, ends);
-    }
-
     /**
      *  stake functions
      *  the decimals of value_ is valueDecimals_
      */
     function stake(uint256[] memory tokenIds_, uint256[] memory values_)
-        external
+        public
     {
         uint256 length = tokenIds_.length;
 
@@ -266,6 +271,14 @@ contract RegenerativePool is
                 _stake(tokenIds_[i], values_[i]);
             }
         }
+    }
+
+    function stake(uint256 tokenId_, uint256 value_) external {
+        uint256[] memory tokenIds = new uint256[](1);
+        uint256[] memory values = new uint256[](1);
+        tokenIds[0] = tokenId_;
+        values[0] = value_;
+        stake(tokenIds, values);
     }
 
     /**

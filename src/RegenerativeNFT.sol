@@ -88,8 +88,8 @@ contract RegenerativeNFT is
 
         if (!_slotExists(slot_)) revert Constants.InvalidSlot();
         SlotData memory slotData = getSlotSnapshot(slot_);
-        if (slotData.mintableValue < value_) revert Constants.ExceedTVL();
-        if (value_ < slotData.minimumValue) revert Constants.InsufficientBalance();
+        if (slotData.mintableValue < value_) revert Constants.InsufficientBalance();
+        if (value_ < slotData.minimumValue) revert Constants.BelowMinimumValue();
 
         if (Constants.transferCurrencyTo(
             _msgSender(),
@@ -108,11 +108,12 @@ contract RegenerativeNFT is
         if (_msgSender() != ownerOf(tokenId_)) revert Constants.NotOwner();
         
         uint256 balance = balanceOf(tokenId_);
+        uint256 value = 0;
         uint256 length = values_.length;
         for (uint256 i = 0; i < length; i++) {
-            balance -= values_[i];
+            value += values_[i];
         }
-        if (balance != 0) revert Constants.MismatchValue();
+        if (balance - value != 0) revert Constants.MismatchValue(balance, value);
 
         _split(tokenId_, length, values_);
     }
@@ -121,8 +122,7 @@ contract RegenerativeNFT is
         _burn(tokenId_);
     }
 
-    function updateStakeDataByTokenId(uint256 tokenId_, uint256 secs_) external onlyPool
-    {
+    function updateStakeDataByTokenId(uint256 tokenId_, uint256 secs_) external onlyPool {
         _updateStakeDataByTokenId(tokenId_, secs_);
     }
 

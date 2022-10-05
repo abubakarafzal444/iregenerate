@@ -26,17 +26,16 @@ library Constants {
 
     error NotQualified();
     error InvalidSlot();
-    error ExceedTVL();
+    error BelowMinimumValue();
     error NotOwner();
     error NotStaker();
     error OnlyPool();
-    error NotApproved();
     error NotClamiable();
     error NotRedeemable();
     error InsufficientBalance();
     error ExceedUnits();
     error ListMismatch();
-    error MismatchValue();
+    error MismatchValue(uint256 _expected, uint256 _actual);
 
     function transferCurrencyTo(
         address to_,
