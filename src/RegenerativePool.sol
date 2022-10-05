@@ -86,7 +86,7 @@ contract RegenerativePool is
      *  the decimals of value_ is valueDecimals_
      */
     function stake(uint256[] memory tokenIds_, uint256[] memory values_)
-        external
+        public
     {
         uint256 length = tokenIds_.length;
 
@@ -100,6 +100,16 @@ contract RegenerativePool is
                 _stake(tokenIds_[i], values_[i]);
             }
         }
+    }
+
+    function stake(uint256 tokenId_, uint256 value_)
+        external
+    {
+        uint256[] memory tokenIds = new uint256[](1);
+        uint256[] memory values = new uint256[](1);
+        tokenIds[0] = tokenId_;
+        values[0] = value_;
+        stake(tokenIds, values);
     }
 
     /**
