@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
+import "openzeppelin-contracts/interfaces/IERC20.sol";
 import "./ERC3525/IERC3525.sol";
 import "./IReStaking.sol";
 import "./IRegenerative.sol";
 import "./Constants.sol";
-import "openzeppelin-contracts/interfaces/IERC20.sol";
 
 abstract contract RegenerativeCore {
     struct Duration {
@@ -20,14 +20,10 @@ abstract contract RegenerativeCore {
         uint64 claimtime;
     }
 
-    event Stake(
-        address indexed from_,
-        uint256 indexed tokenId_,
-        uint256 value_
-    );
-    event Unstake(address indexed to_, uint256 indexed tokenId_);
-    event Claim(address indexed to_, uint256 balance);
-    event Redeem(address indexed to_, uint256 value_);
+    event Stake(address indexed _from, uint256 indexed _tokenId, uint256 _value);
+    event Unstake(address indexed _to, uint256 indexed _tokenId);
+    event Claim(address indexed _to, uint256 _balance);
+    event Redeem(address indexed _to, uint256 _value);
 
     IERC3525 public erc3525;
     IRegenerative public iregenerative;
@@ -38,22 +34,15 @@ abstract contract RegenerativeCore {
     mapping(address => Duration[]) _reStakingDurations;
     mapping(address => uint256) _reStakingIndex;
 
-    // tokenId => stakingInfo
-    mapping(uint256 => StakingInfo) _stakingInfos;
-
-    // staker => tokenIds
-    mapping(address => uint256[]) _stakingIds;
     mapping(uint256 => uint256) _tokenIdsIndex;
-
-    mapping(address => StakingInfo[]) _stakingRecords;
+    mapping(address => StakingInfo[]) public _stakingRecords;
 
     function _stake(uint256 tokenId_, uint256 value_) internal {
         uint64 currtime = uint64(block.timestamp);
-        uint256 tokenId = tokenId_;
-        uint256 value = value_;
+        uint256 tokenId = _transferToPool(tokenId_, value_);
 
         StakingInfo memory stakingInfo = StakingInfo({
-            tokenId: tokenId_,
+            tokenId: tokenId,
             staketime: currtime,
             unstaketime: 0,
             claimtime: currtime
@@ -61,27 +50,27 @@ abstract contract RegenerativeCore {
         _tokenIdsIndex[tokenId] = _stakingRecords[msg.sender].length;
         _stakingRecords[msg.sender].push(stakingInfo);
 
-        if (value_ == 0) {
+        emit Stake(msg.sender, tokenId, value_);
+    }
+
+    function _transferToPool(uint256 tokenId_, uint256 value_) private returns (uint256) {
+        uint256 tokenId = tokenId_;
+        if (value_ == erc3525.balanceOf(tokenId_)) {
             // stake tokenId_ into the contract
             erc3525.safeTransferFrom(msg.sender, address(this), tokenId_);
-            value = erc3525.balanceOf(tokenId_);
         } else {
             // split tokenId_ to newTokenId then stake into the contract
             tokenId = erc3525.transferFrom(tokenId_, address(this), value_);
         }
-
-        // _tokenIdsIndex[tokenId] = _stakingIds[msg.sender].length;
-        // _stakingIds[msg.sender].push(tokenId);
-
-        emit Stake(msg.sender, tokenId, value);
+        return tokenId;
     }
 
-    function _claim(StakingInfo[] storage stakingInfos_, uint64 currtime_) internal {
+    function _claim(StakingInfo[] storage stakingRecords_, uint64 currtime_) internal {
         uint256 balance = 0;
-        uint256 length = stakingInfos_.length;
+        uint256 length = stakingRecords_.length;
 
         for (uint256 i = 0; i < length; i++) {
-            StakingInfo storage stakingInfo = stakingInfos_[i];
+            StakingInfo storage stakingInfo = stakingRecords_[i];
             balance += _calculateClaimableYield(
                 stakingInfo.tokenId,
                 currtime_ - stakingInfo.claimtime,
@@ -90,7 +79,8 @@ abstract contract RegenerativeCore {
             stakingInfo.claimtime = currtime_;
         }
 
-        Constants.transferCurrencyTo(msg.sender, currency, balance, erc3525.valueDecimals());
+        _transferCurrency(msg.sender, currency, balance, erc3525.valueDecimals());
+
         emit Claim(msg.sender, balance);
     }
 
@@ -107,7 +97,7 @@ abstract contract RegenerativeCore {
 
             balance += _calculateClaimableYield(
                 tokenId,
-                currtime_ - _stakingInfos[tokenId].claimtime,
+                currtime_ - stakingInfo.claimtime,
                 Constants.YieldType.BASE_APR
             );
 
@@ -124,7 +114,7 @@ abstract contract RegenerativeCore {
             emit Unstake(msg.sender, tokenId);
         }
 
-        Constants.transferCurrencyTo(msg.sender, currency, balance, erc3525.valueDecimals());
+        _transferCurrency(msg.sender, currency, balance, erc3525.valueDecimals());
         emit Claim(msg.sender, balance);
     }
 
@@ -132,13 +122,6 @@ abstract contract RegenerativeCore {
         uint256 lastIndex = _stakingRecords[msg.sender].length - 1;
         _stakingRecords[msg.sender][index_] = _stakingRecords[msg.sender][lastIndex];
         _stakingRecords[msg.sender].pop();
-    }
-
-    function _removeTokenIdFromStakesEnumeration(uint256 tokenId_) internal {
-        uint256 tokenIndex = _tokenIdsIndex[tokenId_];
-        uint256 lastIndex = _stakingIds[msg.sender].length - 1;
-        _stakingIds[msg.sender][tokenIndex] = _stakingIds[msg.sender][lastIndex];
-        _stakingIds[msg.sender].pop();
     }
 
     function _redeem(uint256[] memory tokenIds_) internal {
@@ -159,12 +142,12 @@ abstract contract RegenerativeCore {
                 Constants.YieldType.BONUS_APR
             );
 
-            delete _stakingInfos[tokenId];
+            delete _stakingRecords[msg.sender][_tokenIdsIndex[tokenId]];
 
             iregenerative.burn(tokenId);
         }
 
-        Constants.transferCurrencyTo(msg.sender, currency, principal + bonusYield, erc3525.valueDecimals());
+        _transferCurrency(msg.sender, currency, principal + bonusYield, erc3525.valueDecimals());
         emit Redeem(msg.sender, principal);
         emit Claim(msg.sender, bonusYield);
     }
@@ -185,14 +168,26 @@ abstract contract RegenerativeCore {
             (Constants.YEAR_IN_SECS * Constants.PERCENTAGE);
     }
 
-    function _calculateHighYieldSecs(uint256 tokenId)
+    function _transferCurrency(
+        address to_,
+        address currency_,
+        uint256 value_,
+        uint256 valueDecimals_
+    ) private returns (bool) {
+        uint256 balance = (value_ * 10**ERC20(currency_).decimals()) /
+            10**valueDecimals_;
+
+        return ERC20(currency_).transfer(to_, balance);
+    }
+
+    function _calculateHighYieldSecs(uint256 tokenId_)
         internal
         view
         returns (uint256)
     {
         uint256 highYieldSecs = 0;
 
-        StakingInfo memory stakingInfo = _stakingInfos[tokenId];
+        StakingInfo memory stakingInfo = _stakingRecords[msg.sender][_tokenIdsIndex[tokenId_]];
 
         uint256 length = _reStakingDurations[msg.sender].length;
         for (uint256 j = 0; j < length; j++) {

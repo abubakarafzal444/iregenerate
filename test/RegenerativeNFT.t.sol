@@ -3,24 +3,12 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "../src/RegenerativeNFT.sol";
-import "../src/ERC3525/IERC3525.sol";
-import "../src/ERC3525/ERC3525Holder.sol";
-import "../src/IReStaking.sol";
-import "../src/IRegenerative.sol";
-import "../src/IRegenerativePool.sol";
-import "../src/RegenerativeCore.sol";
-import "../src/Constants.sol";
-import "openzeppelin-contracts/interfaces/IERC20.sol";
-import "openzeppelin-contracts/access/Ownable.sol";
-import "openzeppelin-contracts/proxy/utils/UUPSUpgradeable.sol";
-import "../src/UUPSProxy.sol";
 
 contract RegenerativeTest is Test {
     using stdStorage for StdStorage;
 
     TestUSDC erc20;
     RegenerativeNFT nft;
-    RegenerativePool pool;
 
     uint256 constant ONE_UNIT = 10**6;
 
@@ -36,10 +24,6 @@ contract RegenerativeTest is Test {
 
         nft = new RegenerativeNFT();
         nft.initialize("RegenerativeNFT", "RGT", 6);
-
-        pool = new RegenerativePool();
-
-        nft.setRegenerativePool(address(pool));
         nft.createSlot(
             1,
             2_000_000 * ONE_UNIT,
@@ -51,7 +35,7 @@ contract RegenerativeTest is Test {
         deal(address(erc20), alice, 1_000_000 * ONE_UNIT);
         deal(address(erc20), bob, 1_000_000 * ONE_UNIT);
         deal(address(erc20), charlie, 1_000_000 * ONE_UNIT);
-        emit log_named_uint("balance", erc20.balanceOf(alice));
+
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
 
@@ -60,11 +44,8 @@ contract RegenerativeTest is Test {
         nft.mint(1, 1_000 * ONE_UNIT);
         nft.mint(1, 20_000 * ONE_UNIT);
         nft.mint(1, 9_000 * ONE_UNIT);
-
         vm.stopPrank();
     }
-
-    // =========== Regenerative NFT UNIT TEST Start ===========
 
     function testCreateSlot() public {
         uint256 beforeCreate = nft.slotCount();
@@ -99,40 +80,31 @@ contract RegenerativeTest is Test {
     }
 
     function testCannotMintWithBelowMinimumValue() public {
-        vm.startPrank(alice);
+        vm.prank(alice);
         vm.expectRevert(Constants.BelowMinimumValue.selector);
         nft.mint(1, 200 * ONE_UNIT);
-        vm.stopPrank();
     }
 
     function testMerge() public {
-        vm.startPrank(bob);
-        ERC3525Upgradeable.TokenData memory beforeMerge = nft.getTokenSnapshot(
-            1
-        );
-
         uint256[] memory tokenIds = new uint256[](3);
         tokenIds[0] = 1;
         tokenIds[1] = 2;
         tokenIds[2] = 3;
+        ERC3525Upgradeable.TokenData memory beforeMerge = nft.getTokenSnapshot(1);
+        vm.prank(bob);
         nft.merge(tokenIds);
-
-        ERC3525Upgradeable.TokenData memory afterMerge = nft.getTokenSnapshot(
-            1
-        );
-        vm.stopPrank();
+        ERC3525Upgradeable.TokenData memory afterMerge = nft.getTokenSnapshot(1);
         assertEq(afterMerge.balance - beforeMerge.balance, 29_000 * ONE_UNIT);
     }
 
     function testCannotMergeWithNotOwner() public {
-        vm.startPrank(alice);
         uint256[] memory tokenIds = new uint256[](3);
         tokenIds[0] = 1;
         tokenIds[1] = 2;
         tokenIds[2] = 3;
+        vm.prank(alice);
         vm.expectRevert(Constants.NotOwner.selector);
         nft.merge(tokenIds);
-        vm.stopPrank();
     }
 
     function testSplit() public {
@@ -195,135 +167,10 @@ contract RegenerativeTest is Test {
         assertEq(afterRemoveValue, 0);
     }
 
-    function testBurn() public {
-        vm.startPrank(address(pool));
-        nft.burn(1);
-        vm.expectRevert("ERC3525: owner query for nonexistent token");
-        assertEq(nft.ownerOf(1), address(0));
-        vm.stopPrank();
-    }
-
     function testCannotBurnWithOnlyPool() public {
         vm.expectRevert(Constants.OnlyPool.selector);
         nft.burn(1);
     }
-
-    function testUpdateStakeDataByTokenId() public {
-        uint256 beforeUpdate = nft.highYieldSecsOf(1);
-        vm.prank(address(pool));
-        nft.updateStakeDataByTokenId(1, 20);
-        uint256 afterUpdate = nft.highYieldSecsOf(1);
-        assertEq(afterUpdate - beforeUpdate, 20);
-    }
-
-    function testRemoveStakeDataByTokenId() public {
-        stdstore
-            .target(address(nft))
-            .sig(nft.highYieldSecsOf.selector)
-            .with_key(1)
-            .checked_write(20);
-        uint256 beforeRemove = nft.highYieldSecsOf(1);
-        vm.prank(address(pool));
-        nft.removeStakeDataByTokenId(1);
-        uint256 afterRemove = nft.highYieldSecsOf(1);
-        assertEq(beforeRemove - afterRemove, 20);
-    }
-
-    // =========== Regenerative NFT UNIT TEST End ===========
-}
-
-contract RegenerativePool is
-    Ownable,
-    UUPSUpgradeable,
-    Initializable,
-    RegenerativeCore,
-    ERC3525Holder,
-    IRegenerativePool
-{
-    uint256 public LOCK_TIME;
-
-    function initialize(address ierc3525_, uint256 locktime_)
-        public
-        initializer
-    {
-        erc3525 = IERC3525(ierc3525_);
-        iregenerative = IRegenerative(ierc3525_);
-        LOCK_TIME = locktime_;
-    }
-
-    /**
-     *  stake functions
-     *  the decimals of value_ is valueDecimals_
-     */
-    function stake(uint256[] memory tokenIds_, uint256[] memory values_)
-        public
-    {
-        uint256 length = tokenIds_.length;
-
-        if (length != values_.length) revert Constants.ListMismatch();
-
-        for (uint256 i = 0; i < length; i++) {
-            if (msg.sender != erc3525.ownerOf(tokenIds_[i]))
-                revert Constants.NotOwner();
-            if (values_[i] == 0) {
-                _stake(tokenIds_[i], 0);
-            } else {
-                _stake(tokenIds_[i], values_[i]);
-            }
-        }
-    }
-
-    function stake(uint256 tokenId_, uint256 value_) external {
-        uint256[] memory tokenIds = new uint256[](1);
-        uint256[] memory values = new uint256[](1);
-        tokenIds[0] = tokenId_;
-        values[0] = value_;
-        stake(tokenIds, values);
-    }
-
-    /**
-        claim related functions
-     */
-    function claim() external {
-        if (block.timestamp < LOCK_TIME) revert Constants.NotClamiable();
-
-        _claim(_stakingRecords[msg.sender], uint64(block.timestamp));
-    }
-
-    /**
-        unstake functions
-     */
-    function unstake(uint256[] memory tokenIds_) public {
-        _storeReStakeDurations(msg.sender);
-        _unstake(tokenIds_, uint64(block.timestamp));
-    }
-
-    function unstake(uint256 tokenId_) external {
-        uint256[] memory tokenIds_ = new uint256[](1);
-        tokenIds_[0] = tokenId_;
-        unstake(tokenIds_);
-    }
-
-    /**
-        redeem functions
-     */
-    function redeem(uint256[] memory tokenIds_) public {
-        _storeReStakeDurations(msg.sender);
-        _redeem(tokenIds_);
-    }
-
-    function redeem(uint256 tokenId_) external {
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = tokenId_;
-        redeem(tokenIds);
-    }
-
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        virtual
-        override
-        onlyOwner
-    {}
 }
 
 error NullAddress();

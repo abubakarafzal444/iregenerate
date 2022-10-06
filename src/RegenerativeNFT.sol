@@ -91,11 +91,10 @@ contract RegenerativeNFT is
         if (slotData.mintableValue < value_) revert Constants.InsufficientBalance();
         if (value_ < slotData.minimumValue) revert Constants.BelowMinimumValue();
 
-        if (Constants.transferCurrencyTo(
-            _msgSender(),
-            slotData.currency,
-            value_,
-            ERC3525Upgradeable.valueDecimals())) {
+        uint256 balance = (value_ * 10**ERC20(slotData.currency).decimals()) /
+            10**ERC3525Upgradeable.valueDecimals();
+
+        if (ERC20(slotData.currency).transferFrom(msg.sender, Constants.MULTISIG, balance)) {
             _mintValue(_msgSender(), slot_, value_);
         }
     }
