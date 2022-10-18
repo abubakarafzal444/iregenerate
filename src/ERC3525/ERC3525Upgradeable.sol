@@ -9,7 +9,6 @@ import "openzeppelin-contracts-upgradeable/utils/introspection/ERC165Upgradeable
 import "openzeppelin-contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "openzeppelin-contracts-upgradeable/utils/AddressUpgradeable.sol";
 import "openzeppelin-contracts/utils/Strings.sol";
-import "../Constants.sol";
 import "./IERC3525.sol";
 import "./IERC3525Receiver.sol";
 import "./extensions/IERC3525Metadata.sol";
@@ -28,6 +27,14 @@ abstract contract ERC3525Upgradeable is
 
     event SetMetadataDescriptor(address indexed metadataDescriptor);
 
+    /**
+     * @dev MUST emit when multiple tokens with the same slot is merged into one token
+     * @param _owner The tokens owner
+     * @param _tokenId The tokenId
+     * @param _value The total value of merged token
+     */
+    event Merge(address indexed _owner, uint256 _tokenId, uint256 _value);
+
     struct TokenData {
         uint256 id;
         uint256 slot;
@@ -36,6 +43,8 @@ abstract contract ERC3525Upgradeable is
         address[] valueApprovals;
         uint256 balance;
         uint256 mintTime;
+        uint256 transferTime;
+        uint256 claimTime;
         uint256 highYieldSecs;
     }
 
@@ -61,6 +70,8 @@ abstract contract ERC3525Upgradeable is
     mapping(address => AddressData) private _addressData;
 
     IERC3525MetadataDescriptor public metadataDescriptor;
+
+    mapping(uint256 => bool) private _derivedTokenId;
 
     // solhint-disable-next-line
     function __ERC3525_init(
@@ -190,6 +201,10 @@ abstract contract ERC3525Upgradeable is
                     "";
     }
 
+    /**
+     * @notice Custom function to get snapshot of token data
+     * @param tokenId_ The token id of the token data
+     */
     function getTokenSnapshot(uint256 tokenId_) public view returns (TokenData memory) {
         require(_exists(tokenId_), "ERC3525: snapshot query for nonexistent token");
         return _allTokens[_allTokensIndex[tokenId_]];
@@ -211,6 +226,8 @@ abstract contract ERC3525Upgradeable is
         return _approvedValues[tokenId_][operator_];
     }
 
+    // todo: check if tokenData loss some info
+    // transfer value to to_, new token should be inherited all time info from fromTokenId_
     function transferFrom(
         uint256 fromTokenId_,
         address to_,
@@ -308,6 +325,14 @@ abstract contract ERC3525Upgradeable is
         return _addressData[owner_].ownedTokens[index_];
     }
 
+    /**
+     * @notice Custom function to get the tokens of the owner
+     * @param owner_ The owner of tokens
+     */
+    function _getOwnedTokens(address owner_) internal virtual returns (uint256[] memory) {
+        return _addressData[owner_].ownedTokens;
+    }
+
     function _setApprovalForAll(
         address owner_,
         address operator_,
@@ -342,23 +367,25 @@ abstract contract ERC3525Upgradeable is
         return _allTokens.length != 0 && _allTokens[_allTokensIndex[tokenId_]].id == tokenId_;
     }
 
+    // event Merge(address indexed _owner, uint256 _tokenId, uint256 _value);
     /**
      * @notice Custom function to merge multiple tokens into one
+     * @param tokenId_ The merged token
+     * @param length_ The length of source tokens
      * @param tokenIds_ The selected token ids are about to merge
      */
-    function _merge(uint256[] memory tokenIds_) internal {
-        uint256 length = tokenIds_.length;
-
-        TokenData storage targetTokenData = _allTokens[_allTokensIndex[tokenIds_[0]]];
-        if (_msgSender() != targetTokenData.owner) revert Constants.NotOwner();
+    function _merge(uint256 tokenId_, uint256 length_, uint256[] memory tokenIds_) internal {
+        TokenData storage targetTokenData = _allTokens[_allTokensIndex[tokenId_]];
 
         uint256 mintTime = targetTokenData.mintTime;
         uint256 balance = targetTokenData.balance;
         uint256 highYieldSecs = targetTokenData.highYieldSecs;
+        uint256[] memory tokenIds = new uint256[](length_+1);
+        uint256[] memory values = new uint256[](length_+1);
+        tokenIds[0] = tokenId_;
+        values[0] = targetTokenData.balance;
 
-        for (uint256 i = 1; i < length; i++) {
-            if (_msgSender() != ownerOf(tokenIds_[i])) revert Constants.NotOwner();
-            
+        for (uint256 i = 0; i < length_; i++) {
             TokenData memory sourceTokenData = _allTokens[_allTokensIndex[tokenIds_[i]]];
             balance += sourceTokenData.balance;
             _transferValue(
@@ -367,7 +394,7 @@ abstract contract ERC3525Upgradeable is
                 sourceTokenData.balance
             );
 
-            highYieldSecs += sourceTokenData.highYieldSecs;
+            highYieldSecs += _allTokens[_allTokensIndex[tokenIds_[i]]].highYieldSecs;
 
             if (mintTime < sourceTokenData.mintTime) {
                 mintTime = sourceTokenData.mintTime;
@@ -378,8 +405,19 @@ abstract contract ERC3525Upgradeable is
 
         targetTokenData.mintTime = mintTime;
         targetTokenData.balance = balance;
-        targetTokenData.highYieldSecs += highYieldSecs;
+        targetTokenData.highYieldSecs = highYieldSecs;
+
+        emit Merge(_msgSender(), tokenId_, balance);
     }
+
+    /**
+     * @dev MUST emit when a token is splited to multiple tokens with the same slot
+     * the total value of splited tokens must be the same as original value.
+     * @param _owner The token owner
+     * @param _tokenId The original token id
+     * @param _tokenIds The splited token ids
+     */
+    event Split(address indexed _owner, uint256 _tokenId, uint256[] _tokenIds);
 
     /**
      * @notice Custom function to split one token to multiple tokens,
@@ -390,11 +428,15 @@ abstract contract ERC3525Upgradeable is
      * @param values_ The values distribution for splited token ids
      */
     function _split(uint256 tokenId_, uint256 length_, uint256[] memory values_) internal {
-        for (uint256 i = 1; i < length_; i++) {
+        uint256[] memory splitedTokens = new uint256[](length_);
+        uint256 slot = ERC3525Upgradeable.slotOf(tokenId_);
+        for (uint256 i = 0; i < length_; i++) {
             uint256 newTokenId = _createDerivedTokenId(tokenId_);
-            _mint(_msgSender(), newTokenId, ERC3525Upgradeable.slotOf(tokenId_));
+            _mint(_msgSender(), newTokenId, slot);
             _transferValue(tokenId_, newTokenId, values_[i]);
+            splitedTokens[i] = newTokenId;
         }
+        emit Split(_msgSender(), tokenId_, splitedTokens);
     }
 
     function _mintValue(address to_, uint256 slot_, uint256 value_) internal virtual returns (uint256) {
@@ -426,6 +468,8 @@ abstract contract ERC3525Upgradeable is
             valueApprovals: new address[](0),
             balance: 0,
             mintTime: block.timestamp,
+            transferTime: block.timestamp,
+            claimTime: block.timestamp,
             highYieldSecs: 0
         });
 
@@ -447,6 +491,7 @@ abstract contract ERC3525Upgradeable is
         _beforeValueTransfer(owner, address(0), tokenId_, 0, slot, value);
 
         _clearApprovedValues(tokenId_);
+        _removeTimeInfoByTokenId(tokenId_);
         _removeTokenFromOwnerEnumeration(owner, tokenId_);
         _removeTokenFromAllTokensEnumeration(tokenId_);
 
@@ -505,20 +550,32 @@ abstract contract ERC3525Upgradeable is
     }
 
     /**
-     * @notice Custom function to update stake data of token id
-     * @param tokenId_ The stake data of token id needs to be updated
+     * @notice Custom function to update high yield seconds of token id
+     * @param tokenId_ The token id needs to be updated
      * @param secs_ The high yield seconds will be claimed once redemption
      */
-    function _updateStakeDataByTokenId(uint256 tokenId_, uint256 secs_) internal {
+    function _updateHighYieldSecsByTokenId(uint256 tokenId_, uint256 secs_) internal returns (uint256) {
         _allTokens[_allTokensIndex[tokenId_]].highYieldSecs += secs_;
+        return _allTokens[_allTokensIndex[tokenId_]].highYieldSecs;
+    }
+
+    /**
+     * @notice Custom function to update transfer time of token id
+     * @param tokenId_ The token id needs to be updated
+     */
+    function _updateTransferTimeByTokenId(uint256 tokenId_) internal {
+        _allTokens[_allTokensIndex[tokenId_]].transferTime = block.timestamp;
     }
 
     /**
      * @notice Custom function to remove stake data of token id
      * @param tokenId_ The stake data of token id needs to be removed
      */
-    function _removeStakeDataByTokenId(uint256 tokenId_) internal {
+    function _removeTimeInfoByTokenId(uint256 tokenId_) internal {
         delete _allTokens[_allTokensIndex[tokenId_]].highYieldSecs;
+        delete _allTokens[_allTokensIndex[tokenId_]].claimTime;
+        delete _allTokens[_allTokensIndex[tokenId_]].transferTime;
+        delete _allTokens[_allTokensIndex[tokenId_]].mintTime;
     }
 
     function _approve(address to_, uint256 tokenId_) internal virtual {
@@ -609,7 +666,7 @@ abstract contract ERC3525Upgradeable is
         require(ERC3525Upgradeable.ownerOf(tokenId_) == from_, "ERC3525: transfer from incorrect owner");
         require(to_ != address(0), "ERC3525: transfer to the zero address");
 
-        _beforeValueTransfer(from_, to_, tokenId_, tokenId_, slotOf(tokenId_), balanceOf(tokenId_));
+        _beforeValueTransfer(from_, to_, tokenId_, tokenId_, slotOf(tokenId_), ERC3525Upgradeable.balanceOf(tokenId_));
 
         _approve(address(0), tokenId_);
         _clearApprovedValues(tokenId_);
@@ -633,6 +690,15 @@ abstract contract ERC3525Upgradeable is
             _checkOnERC721Received(from_, to_, tokenId_, data_),
             "ERC3525: transfer to non ERC721Receiver"
         );
+    }
+
+    /**
+     * @notice Custom function to set the claim time
+     * @param tokenId_ the claimed token id
+     * @param currtime_ the timestamp to set to claim time
+     */
+    function _setClaimTime(uint256 tokenId_, uint256 currtime_) internal {
+        _allTokens[_allTokensIndex[tokenId_]].claimTime = currtime_;
     }
 
     function _checkOnERC3525Received( 
@@ -704,7 +770,22 @@ abstract contract ERC3525Upgradeable is
         uint256 toTokenId_,
         uint256 slot_,
         uint256 value_
-    ) internal virtual {}
+    ) internal virtual {
+        if (_derivedTokenId[toTokenId_]) {
+            // splited token should be inherited all time info from the original token
+            TokenData memory sourceTokenData = _allTokens[_allTokensIndex[fromTokenId_]];
+            TokenData storage targeTokenData = _allTokens[_allTokensIndex[toTokenId_]];
+            targeTokenData.mintTime = sourceTokenData.mintTime;
+            targeTokenData.transferTime = sourceTokenData.transferTime;
+            targeTokenData.claimTime = sourceTokenData.claimTime;
+            targeTokenData.highYieldSecs = sourceTokenData.highYieldSecs;
+        }
+
+        from_;
+        to_;
+        slot_;
+        value_;
+    }
 
     function _afterValueTransfer(
         address from_,
@@ -727,7 +808,7 @@ abstract contract ERC3525Upgradeable is
     }
 
     function _createDerivedTokenId(uint256 fromTokenId_) internal virtual returns (uint256) {
-        fromTokenId_;
+        _derivedTokenId[fromTokenId_] = true;
         return _createDefaultTokenId();
     }
 

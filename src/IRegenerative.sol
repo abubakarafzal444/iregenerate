@@ -5,23 +5,20 @@ pragma solidity ^0.8.0;
  * @title Regenerative NFT
  */
 interface IRegenerative {
-    /**
-     * @dev MUST emit when a token is splited to multiple tokens with the same slot
-     * the total value of splited tokens must be the same as original value.
-     * @param _owner The token owner
-     * @param _tokenId The splited token id
-     * @param _units The token id is splited to
-     * @param _value The total value of splited tokens
-     */
-    event Split(address indexed _owner, uint256 indexed _tokenId, uint256 _units, uint256 _value);
-    
-    /**
-     * @dev MUST emit when multiple tokens with the same slot is merged into one token
-     * @param _owner The tokens owner
-     * @param _units The number of tokens are merged
-     * @param _value The total value of merged token
-     */
-    event Merge(address indexed _owner, uint256 _units, uint256 _value);
+    enum Operation {
+        Claim,
+        Merge,
+        Split
+    }
+
+    struct Duration {
+        uint64 start;
+        uint64 end;
+    }
+
+    event Claim(address indexed _to, Operation indexed _operation, uint256[] _tokenIds, uint256[] _values, uint256[] _balances);
+    event Redeem(address indexed _to, uint256 _principal, uint256 _interest);
+    event UpdateDuration(address indexed _staker, uint256 _index, uint256 _start, uint256 _end);
 
     /**
      * @dev MUST emits when the total value of slot is changed
@@ -43,7 +40,7 @@ interface IRegenerative {
      * @param _slot The slot id
      * @return The balance of the `_slot`
      */
-    function balanceInSlot(uint256 _slot) external view returns (uint256);
+    function balanceOfSlot(uint256 _slot) external view returns (uint256);
 
     /**
      * @notice Get the Total value of the slot
@@ -56,32 +53,25 @@ interface IRegenerative {
      * @notice Add the value into the slot by RWA amount
      * @param _slot The slot whose value is about to add
      * @param _rwaAmount The RWA amount is about to add into the slot
+     * @param _tokenId The RWA token id
      */
-    function addValueInSlot(uint256 _slot, uint256 _rwaAmount) external;
+    function addValueToSlot(uint256 _slot, uint256 _rwaAmount, uint256 _tokenId) external;
 
     /**
      * @notice Remove the value into the slot by RWA amount
      * @param _slot The slot whose value is about to remove
      * @param _rwaAmount The RWA amount is about to remove from the slot
      */
-    function removeValueInSlot(uint256 _slot, uint256 _rwaAmount) external;
+    function removeValueFromSlot(uint256 _slot, uint256 _rwaAmount) external;
 
     /**
      * @notice create a new slot to a corresponding RWA
-     * @param _rwaAmount The RWA amount this slot would store
+     * @param _issuer The RWA owner
      * @param _rwaValue The value of one RWA
      * @param _minimumValue The minimum value for minting
-     * @param _currency The currency for minting the token with this slot
      * @param _maturity The maturity of the token
      */
-    function createSlot(uint256 _rwaAmount, uint256 _rwaValue, uint256 _minimumValue, address _currency, uint256 _maturity) external;
-
-    /**
-     * @notice Get the high yield seconds of the token
-     * @param _tokenId The token id
-     * @return The high yield seconds of the `_tokenId`
-     */
-    function highYieldSecsOf(uint256 _tokenId) external view returns (uint256);
+    function createSlot(address _issuer, uint256 _rwaValue, uint256 _minimumValue, uint256 _maturity) external;
 
     /**
      * @notice Mint a token with the slot for the specific value
@@ -91,36 +81,17 @@ interface IRegenerative {
 
     /**
      * @notice Merge multiple tokens with the same slot into one token
-     * @param _tokenIds The merged tokens
+     * @param _tokenId The merged token
+     * @param _tokenIds The source tokens are about to be merged
      */
-    function merge(uint256[] memory _tokenIds) external;
+    function merge(uint256 _tokenId, uint256[] memory _tokenIds) external;
 
     /**
      * @notice Split one token into multiple tokens
      * @dev MUST check the splited values should be the same of the original value
      * @param _tokenId The splited token
+     * @param _value The value that origial token remains
      * @param _values The list of values for each splited token
      */
-    function split(uint256 _tokenId, uint256[] memory _values) external;
-
-    /**
-     * @notice Burn the token
-     * @param _tokenId The token id
-     */
-    function burn(uint256 _tokenId) external;
-
-    /**
-     * @notice Update the stake data of the token, this function is to interact
-     * with the regenerative pool
-     * @param _tokenId The token id whose data is about to be updated
-     * @param _secs The high yield seconds
-     */
-    function updateStakeDataByTokenId(uint256 _tokenId, uint256 _secs) external;
-
-    /**
-     * @notice Remove the stake data of the token, this function is to interact
-     * with the regenerative pool
-     * @param _tokenId The token id whose data is about to be removed 
-     */
-    function removeStakeDataByTokenId(uint256 _tokenId) external;
+    function split(uint256 _tokenId, uint256 _value, uint256[] memory _values) external;
 }

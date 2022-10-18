@@ -4,17 +4,19 @@ pragma solidity ^0.8.0;
 
 import "./ERC3525Upgradeable.sol";
 import "./extensions/IERC3525SlotEnumerable.sol";
+import "../RegenerativeUtils.sol";
 
 contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnumerable {
 
     struct SlotData {
         uint256 slot;
         uint256[] slotTokens;
+        address issuer;
+        uint256[] collateralTokens;
         uint256 minimumValue;
         uint256 mintableValue;
         uint256 rwaValue;
         uint256 rwaAmount;
-        address currency;
         uint256 maturity;
     }
     // slot => tokenId => index
@@ -54,11 +56,12 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
      * @param slot_ The value will be added into the slot
      * @param rwaAmount_ The RWA owner wants to add number of RWA amount into the slot
      */
-    function _addValueInSlot(uint256 slot_, uint256 rwaAmount_) internal {
-        _allSlots[_allSlotsIndex[slot_]].rwaAmount += rwaAmount_;
-        uint256 addedValue = rwaAmount_ *
-            _allSlots[_allSlotsIndex[slot_]].rwaValue;
+    function _addValueInSlot(uint256 slot_, uint256 rwaAmount_, uint256 tokenId_) internal {
+        SlotData storage slotData = _allSlots[_allSlotsIndex[slot_]];
+        slotData.rwaAmount += rwaAmount_;
+        uint256 addedValue = rwaAmount_ * slotData.rwaValue;
         _allSlots[_allSlotsIndex[slot_]].mintableValue += addedValue;
+        slotData.collateralTokens.push(tokenId_);
     }
 
     /**
@@ -66,34 +69,37 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
      * @param slot_ The value will be removed from the slot
      * @param rwaAmount_ The RWA owner wants to remove number of RWA amount from the slot
      */
-    function _removeValueInSlot(uint256 slot_, uint256 rwaAmount_) internal {
-        uint256 removedValue = rwaAmount_ *
-            _allSlots[_allSlotsIndex[slot_]].rwaValue;
-        uint256 balance = _allSlots[_allSlotsIndex[slot_]].mintableValue;
+    function _removeValueInSlot(uint256 slot_, uint256 rwaAmount_) internal returns (uint256) {
+        SlotData storage slotData = _allSlots[_allSlotsIndex[slot_]];
+        uint256 removedValue = rwaAmount_ * slotData.rwaValue;
+        uint256 balance = slotData.mintableValue;
 
-        if (removedValue > balance) revert Constants.InsufficientBalance();
-        if (rwaAmount_ > _allSlots[_allSlotsIndex[slot_]].rwaAmount) revert Constants.ExceedUnits();
+        if (removedValue > balance) revert RegenerativeUtils.InsufficientBalance();
+        if (rwaAmount_ > slotData.rwaAmount) revert RegenerativeUtils.ExceedUnits();
 
-        _allSlots[_allSlotsIndex[slot_]].rwaAmount -= rwaAmount_;
-        _allSlots[_allSlotsIndex[slot_]].mintableValue -= removedValue;
+        slotData.rwaAmount -= rwaAmount_;
+        slotData.mintableValue -= removedValue;
+        uint256 removeToken = slotData.collateralTokens[slotData.collateralTokens.length-1];
+        slotData.collateralTokens.pop();
+        return removeToken;
     }
 
     function _createSlot(
-        uint256 rwaAmount_,
+        address issuer_,
         uint256 rwaValue_,
         uint256 minimumValue_,
-        address currency_,
         uint256 maturity_
     ) internal returns (uint256) {
         uint256 slotId = slotCount() + 1;
         SlotData memory slotData = SlotData({
             slot: slotId,
             slotTokens: new uint256[](0),
+            issuer: issuer_,
+            collateralTokens: new uint256[](0),
             minimumValue: minimumValue_,
-            mintableValue: rwaAmount_ * rwaValue_,
+            mintableValue: 0,
             rwaValue: rwaValue_,
-            rwaAmount: rwaAmount_,
-            currency: currency_,
+            rwaAmount: 0,
             maturity: maturity_
         });
         _addSlotToAllSlotsEnumeration(slotData);
@@ -126,9 +132,11 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
         uint256 value_
     ) internal virtual override {
         if (from_ == address(0) && fromTokenId_ == 0 && !_tokenExistsInSlot(slot_, toTokenId_)) {
+            // mint token
             _addTokenToSlotEnumeration(slot_, toTokenId_);
             _allSlots[_allSlotsIndex[slot_]].mintableValue -= value_;
         } else if (to_ == address(0) && toTokenId_ == 0 && _tokenExistsInSlot(slot_, fromTokenId_)) {
+            // burn token
             _removeTokenFromSlotEnumeration(slot_, fromTokenId_);
             _allSlots[_allSlotsIndex[slot_]].mintableValue += value_;
         }
