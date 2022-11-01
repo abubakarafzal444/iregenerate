@@ -12,6 +12,16 @@ import "./IRegenerative.sol";
 import "./IReStaking.sol";
 import "./RegenerativeUtils.sol";
 
+interface AssetChecker {
+    struct TokenData {
+        address issuer;
+        uint256 assetValue;
+        uint256 maturity;
+    }
+
+    function data(uint256 _tokenId) external returns (TokenData memory);
+}
+
 contract RegenerativeNFT is
     OwnableUpgradeable,
     UUPSUpgradeable,
@@ -39,6 +49,7 @@ contract RegenerativeNFT is
 
     // todo: add not exist condition
     function maturityOf(uint256 tokenId_) public view returns (uint256) {
+        if (!_exists(tokenId_)) return 0;
         return
             ERC3525Upgradeable.getTokenSnapshot(tokenId_).mintTime +
             ERC3525SlotEnumerableUpgradeable
@@ -63,18 +74,28 @@ contract RegenerativeNFT is
     }
 
     // todo: add value in slot when rwa owner transfer nft into erc3525
+    // todo: need to verify the token data is the same as slot
     function addValueToSlot(uint256 slot_, uint256 rwaAmount_, uint256 tokenId_) external onlyIssuer(slot_) {
-        // IERC721(address(ISSUER)).safeTransferFrom(_msgSender(), address(this), tokenId);
+        if (!verifyAsset(tokenId_, slot_)) revert RegenerativeUtils.InvalidToken();
+        IERC721(address(RegenerativeUtils.ASSET_NFT)).safeTransferFrom(_msgSender(), address(this), tokenId_);
         uint256 oldValue = slotTotalValue(slot_);
         _addValueInSlot(slot_, rwaAmount_, tokenId_);
         emit SlotValueChanged(slot_, oldValue, slotTotalValue(slot_));
+    }
+
+    function verifyAsset(uint256 tokenId_, uint256 slot_) internal returns (bool) {
+        AssetChecker.TokenData memory tokenData = AssetChecker(RegenerativeUtils.ASSET_NFT).data(tokenId_);
+        SlotData memory slotData = ERC3525SlotEnumerableUpgradeable.getSlotSnapshot(slot_);
+        return (slotData.issuer == tokenData.issuer &&
+            slotData.rwaValue == tokenData.assetValue &&
+            slotData.maturity == tokenData.maturity);
     }
 
     // todo: remove value in slot when rwa owner withdraw nft from erc3525
     function removeValueFromSlot(uint256 slot_, uint256 rwaAmount_) external onlyIssuer(slot_) {
         uint256 oldValue = slotTotalValue(slot_);
         uint256 tokenId = _removeValueInSlot(slot_, rwaAmount_);
-        // IERC721(address(ISSUER)).safeTransferFrom(address(this), _msgSender(), tokenId);
+        IERC721(address(RegenerativeUtils.ASSET_NFT)).safeTransferFrom(address(this), _msgSender(), tokenId);
         emit SlotValueChanged(slot_, oldValue, slotTotalValue(slot_));
     }
 
