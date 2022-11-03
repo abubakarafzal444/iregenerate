@@ -15,7 +15,7 @@ library RegenerativeUtils {
     error ListMismatch();
     error MismatchValue(uint256 _expected, uint256 _actual);
     error NotClaimable();
-    error NotIssuer();
+    error NotOriginator();
     error NotOwner();
     error NotQualified();
     error NotRedeemable();
@@ -41,11 +41,11 @@ library RegenerativeUtils {
     // address internal constant RE_STAKE = 0x10a92B12Da3DEE9a3916Dbaa8F0e141a75F07126;
 
     // Test
-    address internal constant RE_NFT = 0x72cC13426cAfD2375FFABE56498437927805d3d2;
-    address internal constant RE_STAKE = 0x98B3c60ADE6A87b229Aa7d91ad27c227d54d95C0;
-    address internal constant ASSET_NFT = 0x98B3c60ADE6A87b229Aa7d91ad27c227d54d95C0;
+    address internal constant RE_NFT = 0x98B3c60ADE6A87b229Aa7d91ad27c227d54d95C0;
+    address internal constant RE_STAKE = 0xe95fEFbaa79748B66DEfb3D662A12541e4d5Cdc8;
+    address internal constant ASSET_NFT = 0xCeF98e10D1e80378A9A74Ce074132B66CDD5e88d;
 
-    address internal constant FREE_MINT = 0xCeF98e10D1e80378A9A74Ce074132B66CDD5e88d;
+    address internal constant FREE_MINT = 0x72cC13426cAfD2375FFABE56498437927805d3d2;
     address internal constant MULTISIG = 0xAcB683ba69202c5ae6a3B9b9b191075295b1c41C;
 
     function _calculateClaimableInterest(

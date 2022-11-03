@@ -14,6 +14,7 @@ contract RegenerativeNFTTest is Test {
 
     MockERC20 internal erc20;
     MockERC721 internal erc721;
+    MockERC721 internal asset;
     MockERC1155 internal erc1155;
     MockStake internal stake;
     RegenerativeNFT internal nft;
@@ -21,7 +22,7 @@ contract RegenerativeNFTTest is Test {
     uint256 constant ONE_UNIT = 10**6;
 
     address owner = makeAddr("owner");
-    address issuer = makeAddr("issuer");
+    address originator = makeAddr("originator");
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
 
@@ -32,11 +33,20 @@ contract RegenerativeNFTTest is Test {
         vm.stopPrank();
     }
 
+    function initAsset() private {
+        vm.startPrank(owner);
+        asset = new MockERC721();
+        changePrank(originator);
+        asset.mintAsset(2_000_000 * ONE_UNIT, uint64(RegenerativeUtils.MATURITY));
+        vm.stopPrank();
+        emit log_named_address("MockAsset", address(asset));
+    }
+
     function initERC721() private {
         vm.startPrank(owner);
         erc721 = new MockERC721();
         changePrank(alice);
-        erc721.mint();
+        asset.mint();
         vm.stopPrank();
         emit log_named_address("MockERC721", address(erc721));
     }
@@ -70,6 +80,7 @@ contract RegenerativeNFTTest is Test {
 
     function setUp() public {
         initERC20();
+        initAsset();
         initERC721();
         initERC1155();
         initStake();
@@ -80,7 +91,7 @@ contract RegenerativeNFTTest is Test {
         uint256 beforeCreate = nft.slotCount();
         vm.prank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
@@ -92,12 +103,13 @@ contract RegenerativeNFTTest is Test {
     function testMint() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -116,12 +128,13 @@ contract RegenerativeNFTTest is Test {
     function testCannotMintWithInsufficientBalance() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -133,12 +146,13 @@ contract RegenerativeNFTTest is Test {
     function testCannotMintWithBelowMinimumValue() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -153,12 +167,13 @@ contract RegenerativeNFTTest is Test {
         tokenIds[1] = 3;
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -180,12 +195,13 @@ contract RegenerativeNFTTest is Test {
 
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -206,12 +222,13 @@ contract RegenerativeNFTTest is Test {
 
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -231,12 +248,13 @@ contract RegenerativeNFTTest is Test {
 
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -255,12 +273,13 @@ contract RegenerativeNFTTest is Test {
 
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -279,32 +298,32 @@ contract RegenerativeNFTTest is Test {
         vm.stopPrank();
     }
 
-    function testaddValueToSlot() public {
+    function testAddValueToSlot() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
-        uint256 beforeAddValue = nft.balanceOfSlot(1);
-        nft.addValueToSlot(1, 1, 1);
-        uint256 afterAddValue = nft.balanceOfSlot(1);
+        uint256 addedValue = nft.balanceOfSlot(1);
         vm.stopPrank();
-        assertEq(afterAddValue - beforeAddValue, 2_000_000 * ONE_UNIT);
+        assertEq(addedValue, 2_000_000 * ONE_UNIT);
     }
 
     function testRemoveValueInSlot() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         nft.removeValueFromSlot(1, 1);
         uint256 afterRemoveValue = nft.balanceOfSlot(1);
@@ -315,12 +334,13 @@ contract RegenerativeNFTTest is Test {
     function testClaim() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -338,12 +358,13 @@ contract RegenerativeNFTTest is Test {
     function testCannotClaimWithNotClaimable() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -356,12 +377,13 @@ contract RegenerativeNFTTest is Test {
     function testRedeem() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -385,12 +407,13 @@ contract RegenerativeNFTTest is Test {
         tokenIds[1] = 2;
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);
@@ -410,12 +433,13 @@ contract RegenerativeNFTTest is Test {
     function testRedeemWithTransferId() public {
         vm.startPrank(owner);
         nft.createSlot(
-            issuer,
+            originator,
             2_000_000 * ONE_UNIT,
             1_000 * ONE_UNIT,
             RegenerativeUtils.MATURITY
         );
-        changePrank(issuer);
+        changePrank(originator);
+        asset.setApprovalForAll(address(nft), true);
         nft.addValueToSlot(1, 1, 1);
         changePrank(alice);
         erc20.approve(address(nft), UINT256_MAX);

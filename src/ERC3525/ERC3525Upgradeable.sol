@@ -367,7 +367,6 @@ abstract contract ERC3525Upgradeable is
         return _allTokens.length != 0 && _allTokens[_allTokensIndex[tokenId_]].id == tokenId_;
     }
 
-    // event Merge(address indexed _owner, uint256 _tokenId, uint256 _value);
     /**
      * @notice Custom function to merge multiple tokens into one
      * @param tokenId_ The merged token

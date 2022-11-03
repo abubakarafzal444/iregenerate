@@ -11,7 +11,7 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
     struct SlotData {
         uint256 slot;
         uint256[] slotTokens;
-        address issuer;
+        address originator;
         uint256[] collateralTokens;
         uint256 minimumValue;
         uint256 mintableValue;
@@ -56,7 +56,7 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
      * @param slot_ The value will be added into the slot
      * @param rwaAmount_ The RWA owner wants to add number of RWA amount into the slot
      */
-    function _addValueInSlot(uint256 slot_, uint256 rwaAmount_, uint256 tokenId_) internal {
+    function _addValueToSlot(uint256 slot_, uint256 rwaAmount_, uint256 tokenId_) internal {
         SlotData storage slotData = _allSlots[_allSlotsIndex[slot_]];
         slotData.rwaAmount += rwaAmount_;
         uint256 addedValue = rwaAmount_ * slotData.rwaValue;
@@ -69,7 +69,7 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
      * @param slot_ The value will be removed from the slot
      * @param rwaAmount_ The RWA owner wants to remove number of RWA amount from the slot
      */
-    function _removeValueInSlot(uint256 slot_, uint256 rwaAmount_) internal returns (uint256) {
+    function _removeValueFromSlot(uint256 slot_, uint256 rwaAmount_) internal returns (uint256) {
         SlotData storage slotData = _allSlots[_allSlotsIndex[slot_]];
         uint256 removedValue = rwaAmount_ * slotData.rwaValue;
         uint256 balance = slotData.mintableValue;
@@ -85,7 +85,7 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
     }
 
     function _createSlot(
-        address issuer_,
+        address originator_,
         uint256 rwaValue_,
         uint256 minimumValue_,
         uint256 maturity_
@@ -94,7 +94,7 @@ contract ERC3525SlotEnumerableUpgradeable is ERC3525Upgradeable, IERC3525SlotEnu
         SlotData memory slotData = SlotData({
             slot: slotId,
             slotTokens: new uint256[](0),
-            issuer: issuer_,
+            originator: originator_,
             collateralTokens: new uint256[](0),
             minimumValue: minimumValue_,
             mintableValue: 0,

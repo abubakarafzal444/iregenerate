@@ -6,6 +6,7 @@ import "openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "openzeppelin-contracts/interfaces/IERC721.sol";
 import "openzeppelin-contracts/interfaces/IERC1155.sol";
 import "openzeppelin-contracts/token/ERC20/ERC20.sol";
+import "openzeppelin-contracts/token/ERC721/utils/ERC721Holder.sol";
 import "openzeppelin-contracts/proxy/utils/UUPSUpgradeable.sol";
 import "./ERC3525/ERC3525SlotEnumerableUpgradeable.sol";
 import "./IRegenerative.sol";
@@ -14,7 +15,7 @@ import "./RegenerativeUtils.sol";
 
 interface AssetChecker {
     struct TokenData {
-        address issuer;
+        address originator;
         uint256 assetValue;
         uint256 maturity;
     }
@@ -26,6 +27,7 @@ contract RegenerativeNFT is
     OwnableUpgradeable,
     UUPSUpgradeable,
     ERC3525SlotEnumerableUpgradeable,
+    ERC721Holder,
     IRegenerative
 {
     address public _currency;
@@ -47,7 +49,6 @@ contract RegenerativeNFT is
         LOCK_TIME = block.timestamp + RegenerativeUtils.LOCK_TIME;
     }
 
-    // todo: add not exist condition
     function maturityOf(uint256 tokenId_) public view returns (uint256) {
         if (!_exists(tokenId_)) return 0;
         return
@@ -68,45 +69,45 @@ contract RegenerativeNFT is
         return slotdata.rwaValue * slotdata.rwaAmount;
     }
 
-    modifier onlyIssuer(uint256 slot_) {
-        if (_msgSender() != ERC3525SlotEnumerableUpgradeable.getSlotSnapshot(slot_).issuer) revert RegenerativeUtils.NotIssuer();
+    modifier onlyOriginator(uint256 slot_) {
+        if (_msgSender() != ERC3525SlotEnumerableUpgradeable.getSlotSnapshot(slot_).originator) revert RegenerativeUtils.NotOriginator();
         _;
     }
 
     // todo: add value in slot when rwa owner transfer nft into erc3525
     // todo: need to verify the token data is the same as slot
-    function addValueToSlot(uint256 slot_, uint256 rwaAmount_, uint256 tokenId_) external onlyIssuer(slot_) {
+    function addValueToSlot(uint256 slot_, uint256 rwaAmount_, uint256 tokenId_) external onlyOriginator(slot_) {
         if (!verifyAsset(tokenId_, slot_)) revert RegenerativeUtils.InvalidToken();
         IERC721(address(RegenerativeUtils.ASSET_NFT)).safeTransferFrom(_msgSender(), address(this), tokenId_);
         uint256 oldValue = slotTotalValue(slot_);
-        _addValueInSlot(slot_, rwaAmount_, tokenId_);
+        _addValueToSlot(slot_, rwaAmount_, tokenId_);
         emit SlotValueChanged(slot_, oldValue, slotTotalValue(slot_));
     }
 
     function verifyAsset(uint256 tokenId_, uint256 slot_) internal returns (bool) {
         AssetChecker.TokenData memory tokenData = AssetChecker(RegenerativeUtils.ASSET_NFT).data(tokenId_);
         SlotData memory slotData = ERC3525SlotEnumerableUpgradeable.getSlotSnapshot(slot_);
-        return (slotData.issuer == tokenData.issuer &&
+        return (slotData.originator == tokenData.originator &&
             slotData.rwaValue == tokenData.assetValue &&
             slotData.maturity == tokenData.maturity);
     }
 
     // todo: remove value in slot when rwa owner withdraw nft from erc3525
-    function removeValueFromSlot(uint256 slot_, uint256 rwaAmount_) external onlyIssuer(slot_) {
+    function removeValueFromSlot(uint256 slot_, uint256 rwaAmount_) external onlyOriginator(slot_) {
         uint256 oldValue = slotTotalValue(slot_);
-        uint256 tokenId = _removeValueInSlot(slot_, rwaAmount_);
+        uint256 tokenId = _removeValueFromSlot(slot_, rwaAmount_);
         IERC721(address(RegenerativeUtils.ASSET_NFT)).safeTransferFrom(address(this), _msgSender(), tokenId);
         emit SlotValueChanged(slot_, oldValue, slotTotalValue(slot_));
     }
 
     function createSlot(
-        address issuer_,
+        address originator_,
         uint256 rwaValue_,
         uint256 minimumValue_,
         uint256 maturity_
     ) external onlyOwner {
         uint256 newSlot = _createSlot(
-            issuer_,
+            originator_,
             rwaValue_,
             minimumValue_,
             maturity_
@@ -200,7 +201,7 @@ contract RegenerativeNFT is
      *  redeem functions
      */
     function redeem(uint256[] memory tokenIds_) public {
-        _storeReStakeDurations(_msgSender());
+        // _storeReStakeDurations(_msgSender());
         _redeem(tokenIds_, block.timestamp);
     }
 
